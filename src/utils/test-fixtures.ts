@@ -9,20 +9,16 @@ export const ruleTester = new RuleTester({
   languageOptions: { ecmaVersion: 'latest', sourceType: 'module' },
 })
 
-interface ProjectFile {
-  path: string
-  content?: string
-}
-
 export class ProjectFixture {
   constructor(spec: { prefix: string; files: ProjectFile[] }) {
-    this.projectRoot = mkdtempSync(path.join(tmpdir(), spec.prefix))
+    this.prefix = spec.prefix
     // Deduplicate by path, keeping the last entry when duplicates exist
     this.files = [...new Map(spec.files.map((f) => [f.path, f])).values()]
   }
 
   init(): void {
     this.cleanup()
+    this.projectRoot = mkdtempSync(path.join(tmpdir(), this.prefix))
     mkdirSync(this.projectRoot, { recursive: true })
     writeFileSync(path.join(this.projectRoot, 'package.json'), '{}')
 
@@ -34,7 +30,9 @@ export class ProjectFixture {
   }
 
   cleanup(): void {
-    rmSync(this.projectRoot, { recursive: true, force: true })
+    if (this.projectRoot) {
+      rmSync(this.projectRoot, { recursive: true, force: true })
+    }
     // Clear parser caches to prevent stale program state between tests
     clearCaches()
   }
@@ -54,6 +52,12 @@ export class ProjectFixture {
     return readFileSync(filePath, 'utf-8')
   }
 
-  private readonly projectRoot: string
+  private projectRoot = ''
+  private readonly prefix: string
   private readonly files: ProjectFile[]
+}
+
+interface ProjectFile {
+  path: string
+  content?: string
 }

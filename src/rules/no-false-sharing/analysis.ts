@@ -10,12 +10,6 @@ export function runConsumerCheck(
   sourceRoot: string,
   directories: DirEntry[],
 ): Map<string, string[]> {
-  const cacheKey = `${sourceRoot}\0${directories.map((d) => `${d.path}:${d.mode}`).join('\0')}`
-  const cached = readCache(program, cacheKey)
-  if (cached) {
-    return cached
-  }
-
   const checker = program.getTypeChecker()
   const sourceFiles = program.getSourceFiles().filter((sf) => isInsidePath(sf.fileName, sourceRoot))
 
@@ -23,10 +17,7 @@ export function runConsumerCheck(
   const barrels = indexBarrels(directories, projectRoot, sourceFiles, checker)
   const ctx: AnalysisContext = { modules, barrels, checker }
   countConsumers(sourceFiles, sourceRoot, ctx)
-  const errors = collectErrors(modules)
-
-  writeCache(program, cacheKey, errors)
-  return errors
+  return collectErrors(modules)
 }
 
 function indexModules(
@@ -105,9 +96,7 @@ function buildBarrelMap(barrelFile: ts.SourceFile, checker: ts.TypeChecker): Map
   return map
 }
 
-function isNamedReExport(
-  stmt: ts.Statement,
-): stmt is ts.ExportDeclaration & {
+function isNamedReExport(stmt: ts.Statement): stmt is ts.ExportDeclaration & {
   exportClause: ts.NamedExports
   moduleSpecifier: ts.Expression
 } {
@@ -226,21 +215,6 @@ function deriveEntity(consumerPath: string, mode: SharingMode): string {
 }
 
 const MAX_DIR_DEPTH = 3
-
-function readCache(program: ts.Program, key: string): Map<string, string[]> | undefined {
-  return analysisCache.get(program)?.get(key)
-}
-
-function writeCache(program: ts.Program, key: string, errors: Map<string, string[]>): void {
-  let programCache = analysisCache.get(program)
-  if (!programCache) {
-    programCache = new Map()
-    analysisCache.set(program, programCache)
-  }
-  programCache.set(key, errors)
-}
-
-const analysisCache = new WeakMap<ts.Program, Map<string, Map<string, string[]>>>()
 
 interface AnalysisContext {
   modules: Map<string, ModuleEntry>

@@ -240,21 +240,21 @@ class UserService {
 ```js
 // Bad — setup and tests buried between helpers
 function buildFixture(overrides) {
-    return { id: 1, ...overrides }
+  return { id: 1, ...overrides }
 }
 it('works', () => {
   /* ... */
 })
 function assertCorrect(value) {
-    expect(value).toBe(1)
+  expect(value).toBe(1)
 }
 beforeEach(() => {
-    buildFixture()
+  buildFixture()
 })
 
 // Good — setup first, then tests, helpers at the bottom
 beforeEach(() => {
-    buildFixture()
+  buildFixture()
 })
 it('works', () => {
   /* ... */
@@ -263,7 +263,7 @@ function buildFixture(overrides) {
   return { id: 1, ...overrides }
 }
 function assertCorrect(value) {
-    expect(value).toBe(1)
+  expect(value).toBe(1)
 }
 ```
 
