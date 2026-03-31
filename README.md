@@ -1,0 +1,282 @@
+# eslint-plugin-unslop
+
+ESLint plugin that catches common LLM-generated code smells — the kind of subtle junk that sneaks in when your LLM is feeling creative. Smart quotes, invisible unicode, spaghetti imports, dead "shared" code that nobody shares, and declarations ordered for machines instead of humans.
+
+Requires ESLint 9+ (flat config). TypeScript optional but recommended.
+
+## Installation
+
+```bash
+npm install --save-dev eslint-plugin-unslop
+```
+
+## Quick Start
+
+The recommended config enables the three most universal rules out of the box:
+
+```js
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+
+export default [unslop.configs.recommended]
+```
+
+This turns on:
+
+| Rule                        | Severity | What it does                                                        |
+| --------------------------- | -------- | ------------------------------------------------------------------- |
+| `unslop/no-special-unicode` | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
+| `unslop/no-unicode-escape`  | error    | Prefers `"©"` over `"\u00A9"`                                       |
+| `unslop/no-deep-imports`    | error    | Prevents importing too deep within the same top-level folder        |
+
+The remaining rules need explicit configuration:
+
+```js
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+
+export default [
+  unslop.configs.recommended,
+  {
+    rules: {
+      'unslop/no-false-sharing': ['error', { dirs: ['shared', 'utils'] }],
+      'unslop/read-friendly-order': 'warn',
+    },
+  },
+]
+```
+
+## Rules
+
+### `unslop/no-special-unicode`
+
+**Recommended**
+
+Disallows special unicode punctuation and whitespace characters in string literals and template literals. LLMs love to sprinkle in smart quotes (`“like this”`), non-breaking spaces, and other invisible gremlins that look fine in a PR review but cause fun bugs at runtime.
+
+Caught characters include: left/right smart quotes (`“” ‘’`), non-breaking space, en/em dash, horizontal ellipsis, zero-width space, and various other exotic whitespace.
+
+```js
+// Bad — these contain invisible special characters that look normal
+const greeting = 'Hello World' // a non-breaking space (U+00A0) is hiding between the words
+const quote = 'He said “hello”' // smart double quotes (U+201C, U+201D)
+
+// Good
+const greeting = 'Hello World' // regular ASCII space
+const quote = 'He said "hello"' // plain ASCII quotes
+```
+
+Note: the bad examples above contain actual unicode characters that may be
+indistinguishable from their ASCII counterparts in your font — that's exactly
+the problem this rule catches.
+
+### `unslop/no-unicode-escape`
+
+**Recommended**
+
+Prefers actual characters over `\uXXXX` escape sequences. If your string says `\u00A9`, just write `©` — your coworkers will thank you. LLM-generated code sometimes encodes characters as escape sequences for no good reason.
+
+```js
+// Bad
+const copyright = '\u00A9 2025'
+const arrow = '\u2192'
+
+// Good
+const copyright = '© 2025'
+const arrow = '→'
+```
+
+### `unslop/no-deep-imports`
+
+**Recommended**
+
+Forbids importing more than one level deeper than the current file within the same top-level folder. If `features/auth/login.ts` imports from `features/auth/validators/internal/format.ts`, that's reaching too deep into implementation details. This rule nudges you toward flatter structures and proper module boundaries.
+
+Only triggers for imports within the same top-level folder. External packages and imports into other top-level folders are ignored.
+
+#### Options
+
+```js
+;['error', { sourceRoot: 'src' }]
+```
+
+| Option       | Type     | Default       | Description                               |
+| ------------ | -------- | ------------- | ----------------------------------------- |
+| `sourceRoot` | `string` | auto-detected | Source directory relative to project root |
+
+#### Examples
+
+Given a project with `sourceRoot: 'src'`:
+
+```js
+// File: src/features/auth/login.ts
+
+// OK — one level deep, same folder
+import { validate } from './validators/email.js'
+
+// Bad — two levels deep into same top-level folder
+import { format } from './validators/internal/format.js'
+```
+
+### `unslop/no-false-sharing`
+
+**Requires TypeScript parser with program**
+
+The "shared" folder anti-pattern detector. LLMs love creating shared utilities that are only used by one consumer — or worse, by nobody at all. This rule requires that modules inside your designated shared directories are actually imported by at least two separate entities. If it's only used in one place, it's not shared — it's misplaced.
+
+#### Options
+
+```js
+;[
+  'error',
+  {
+    dirs: [{ path: 'shared' }, { path: 'utils', mode: 'file' }],
+    mode: 'dir',
+    sourceRoot: 'src',
+  },
+]
+```
+
+| Option        | Type              | Required | Description                                                                                  |
+| ------------- | ----------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `dirs`        | `array`           | yes      | Directories to enforce sharing rules on                                                      |
+| `dirs[].path` | `string`          | yes      | Directory path relative to `sourceRoot`                                                      |
+| `dirs[].mode` | `'file' \| 'dir'` | no       | How to count consumers for this dir (overrides global `mode`)                                |
+| `mode`        | `'file' \| 'dir'` | no       | Global consumer counting mode — `'file'` counts individual files, `'dir'` counts directories |
+| `sourceRoot`  | `string`          | no       | Source directory relative to project root                                                    |
+
+#### Setup
+
+This rule requires `typescript-eslint` with type information:
+
+```js
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+import tseslint from 'typescript-eslint'
+
+export default tseslint.config(
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+      },
+    },
+  },
+  unslop.configs.recommended,
+  {
+    rules: {
+      'unslop/no-false-sharing': [
+        'error',
+        {
+          dirs: ['shared', 'utils'],
+          sourceRoot: 'src',
+        },
+      ],
+    },
+  },
+)
+```
+
+#### What it catches
+
+```
+src/shared/format-date.ts
+  → only imported by src/features/calendar/view.ts
+  → error: must be used by 2+ entities
+
+src/utils/old-helper.ts
+  → not imported by anyone
+  → error: must be used by 2+ entities
+```
+
+### `unslop/read-friendly-order`
+
+Enforces a top-down reading order for your code. The idea: when someone opens a file, they should see the important stuff first and the helpers below. LLM-generated code often scatters declarations in random order, making files harder to follow.
+
+This rule covers three areas:
+
+**Top-level ordering** — Public/exported symbols should come before the private helpers they use. Read the API first, implementation details second.
+
+```js
+// Bad — helper defined before its consumer
+function formatName(name) {
+  return name.trim().toLowerCase()
+}
+
+export function createUser(name) {
+  return { name: formatName(name) }
+}
+
+// Good — consumer first, helper below
+export function createUser(name) {
+  return { name: formatName(name) }
+}
+
+function formatName(name) {
+  return name.trim().toLowerCase()
+}
+```
+
+**Class member ordering** — Constructor first, public fields next, then other members ordered by dependency.
+
+```js
+// Bad
+class UserService {
+  private format() { /* ... */ }
+  name = 'default'
+  constructor() { /* ... */ }
+}
+
+// Good
+class UserService {
+  constructor() { /* ... */ }
+  name = 'default'
+  private format() { /* ... */ }
+}
+```
+
+**Test file ordering** — Setup hooks (`beforeEach`, `beforeAll`) before teardown hooks (`afterEach`, `afterAll`), and both before test cases.
+
+```js
+// Bad — setup and tests buried between helpers
+function buildFixture(overrides) {
+    return { id: 1, ...overrides }
+}
+it('works', () => {
+  /* ... */
+})
+function assertCorrect(value) {
+    expect(value).toBe(1)
+}
+beforeEach(() => {
+    buildFixture()
+})
+
+// Good — setup first, then tests, helpers at the bottom
+beforeEach(() => {
+    buildFixture()
+})
+it('works', () => {
+  /* ... */
+})
+function buildFixture(overrides) {
+  return { id: 1, ...overrides }
+}
+function assertCorrect(value) {
+    expect(value).toBe(1)
+}
+```
+
+## A Note on Provenance
+
+Yes, a fair amount of this was vibe-coded with LLM assistance — which is fitting, since that's exactly the context this plugin is designed for. That said, the ideas behind these rules, the decisions about what to catch and how to catch it, and the overall design are mine. Every piece of code went through human review, and the test cases in particular were written and verified with deliberate care.
+
+The project also dogfoods itself: `eslint-plugin-unslop` is linted using `eslint-plugin-unslop`.
+
+## Contributing
+
+See [AGENTS.md](./AGENTS.md) for development setup and guidelines.
+
+## License
+
+[MIT](./LICENSE)
