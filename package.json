@@ -27,12 +27,9 @@
   "scripts": {
     "build": "tsup",
     "format": "prettier . --write",
-    "format:check": "prettier . --check",
-    "knip": "knip",
-    "lint": "npm run build && eslint .",
+    "verify": "prettier . --check && tsc --noEmit && tsup && eslint . && knip",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

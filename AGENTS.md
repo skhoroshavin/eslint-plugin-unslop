@@ -19,19 +19,15 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 ## Setup And Commands
 
 - Install deps: `npm install`
-- Check Node version: `node -v`
 - Build: `npm run build`
-- Lint: `npm run lint`
-- Typecheck: `npm run typecheck`
+- Format (write): `npm run format`
+- Verify (format check, typecheck, build, lint, knip): `npm run verify`
 - Test all: `npm run test`
 - Test watch: `npm run test:watch`
-- Format check: `npm run format:check`
-- Format write: `npm run format`
-- Unused deps/exports: `npm run knip`
+- Prepublish (runs before publish): `npm run prepublishOnly`
 
 ## Command Notes
 
-- `npm run lint` runs `npm run build` first, then `eslint .`
 - `npm run test` maps to `vitest run`; `npm run test:watch` maps to `vitest`
 - `prepublishOnly` runs `npm run build`
 - There is no `vitest.config.ts` in the current repo; Vitest is using defaults

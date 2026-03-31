@@ -1,4 +1,4 @@
-name: Validate
+name: Test
 
 on:
   pull_request:
@@ -6,13 +6,9 @@ on:
     branches:
       - main
 
-concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  checks:
-    name: Run checks
+  test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -28,17 +24,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
+      - name: Verify
+        run: npm run verify
 
       - name: Run tests
         run: npm run test
-
-      - name: Run knip
-        run: npm run knip
