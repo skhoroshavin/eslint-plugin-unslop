@@ -26,8 +26,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "format": "prettier . --write",
-    "verify": "prettier . --check && tsc --noEmit && tsup && eslint . && knip",
+    "fix": "knip --fix && eslint . --fix && prettier . --write",
+    "verify": "prettier . --check && knip && tsc --noEmit && tsup && eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"

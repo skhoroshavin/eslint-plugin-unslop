@@ -25,5 +25,5 @@ rules:
     - Always include a "Non-goals" section
   tasks:
     - Read the rule, its helpers, and its test file before changing behavior
-    - Run the most targeted test first, then broader validation (npm run verify)
+    - Use npm run fix to autofix issues, then npm run verify, then npm run test
     - Break tasks into chunks that touch one rule or utility at a time

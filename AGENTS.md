@@ -20,8 +20,8 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 - Install deps: `npm install`
 - Build: `npm run build`
-- Format (write): `npm run format`
-- Verify (format check, typecheck, build, lint, knip): `npm run verify`
+- Fix (autofix knip, lint, formatting): `npm run fix`
+- Verify (format check, knip, typecheck, build, lint): `npm run verify`
 - Test all: `npm run test`
 - Test watch: `npm run test:watch`
 - Prepublish (runs before publish): `npm run prepublishOnly`
@@ -146,4 +146,4 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 - Keep edits scoped and avoid opportunistic refactors
 - Preserve current import style, path conventions, and `.js` extension usage
 - Run the most targeted test command first, then broader validation if needed
-- For significant changes, finish with `npm run typecheck` and `npm run lint`
+- Use `npm run fix` to autofix issues, then `npm run verify` to confirm, then `npm run test`
