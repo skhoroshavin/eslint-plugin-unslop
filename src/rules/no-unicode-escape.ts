@@ -53,14 +53,16 @@ function extractContentAndWrapper(
   text: string,
   node: Literal | TemplateLiteral,
 ): { content: string | null; wrapper: string } {
-  if (node.type === 'Literal' && typeof node.value === 'string' && node.raw) {
+  // For string literals, use node.raw directly to get the quoted content
+  if (node.type === 'Literal' && typeof node.value === 'string' && typeof node.raw === 'string') {
     const quote = node.raw[0]
     if (quote === '"' || quote === "'") {
-      return { content: text.slice(1, -1), wrapper: quote }
+      return { content: node.raw.slice(1, -1), wrapper: quote }
     }
     return { content: null, wrapper: '' }
   }
 
+  // For template literals, the text is already the raw content without outer backticks
   if (node.type === 'TemplateLiteral') {
     return { content: text, wrapper: '`' }
   }

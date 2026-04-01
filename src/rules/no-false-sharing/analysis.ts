@@ -207,13 +207,16 @@ function collectErrors(modules: Map<string, ModuleEntry>): Map<string, string[]>
   return errors
 }
 
+// Derive the entity identifier from a consumer path based on sharing mode
 function deriveEntity(consumerPath: string, mode: SharingMode): string {
   if (mode === 'file') {
     return consumerPath
   }
+  // In 'dir' mode, group by parent directory (up to MAX_DIR_DEPTH levels)
   return consumerPath.split('/').slice(0, -1).slice(0, MAX_DIR_DEPTH).join('/')
 }
 
+// Limit directory nesting for entity grouping to prevent overly broad matches
 const MAX_DIR_DEPTH = 3
 
 interface AnalysisContext {

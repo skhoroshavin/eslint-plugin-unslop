@@ -94,7 +94,7 @@ function resolveImportSourceRelative(
   filename: string,
   sourceRoot: string,
 ): string | undefined {
-  const normalizedSpecifier = specifier.replace(/\.js$/, '')
+  const normalizedSpecifier = specifier.replace(/\.(js|ts|tsx|jsx)$/, '')
 
   if (normalizedSpecifier.startsWith('@/')) {
     return normalizedSpecifier.slice(2)

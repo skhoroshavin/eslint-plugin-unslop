@@ -56,6 +56,6 @@ function parseDirEntry(entry: unknown, defaultMode: SharingMode): DirEntry | und
   return { path: entry.path, mode }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return value != undefined && typeof value === 'object'
 }

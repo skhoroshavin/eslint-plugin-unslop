@@ -55,17 +55,13 @@ const TEARDOWN_HOOKS = new Set(['afterAll', 'afterEach', 'after'])
 const TEST_CALLS = new Set(['test', 'it'])
 
 function getCallRootName(call: CallExpression): string | undefined {
-  const callee = call.callee
-  if (callee.type === 'Identifier') return callee.name
-  if (callee.type === 'MemberExpression') return readObjectRoot(callee.object)
-  if (callee.type === 'CallExpression') return getCallRootName(callee)
-  return undefined
+  return getRootName(call.callee)
 }
 
-function readObjectRoot(node: CallExpression['callee']): string | undefined {
+function getRootName(node: CallExpression['callee']): string | undefined {
   if (node.type === 'Identifier') return node.name
-  if (node.type === 'MemberExpression') return readObjectRoot(node.object)
-  if (node.type === 'CallExpression') return getCallRootName(node)
+  if (node.type === 'MemberExpression') return getRootName(node.object)
+  if (node.type === 'CallExpression') return getRootName(node.callee)
   return undefined
 }
 

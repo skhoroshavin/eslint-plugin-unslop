@@ -1,7 +1,7 @@
 import type { Rule } from 'eslint'
 import type ts from 'typescript'
 import { resolveSourceContext } from '../utils/source-root.js'
-import { readDirsOption, readSourceRootOption } from '../utils/rule-options.js'
+import { isRecord, readDirsOption, readSourceRootOption } from '../utils/rule-options.js'
 import { runConsumerCheck } from './no-false-sharing/analysis.js'
 
 const SCHEMA = [
@@ -87,8 +87,4 @@ function extractTsProgram(context: Rule.RuleContext): ts.Program | undefined {
 
 function isTsProgram(value: unknown): value is ts.Program {
   return isRecord(value) && 'getTypeChecker' in value
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != undefined && typeof value === 'object'
 }
