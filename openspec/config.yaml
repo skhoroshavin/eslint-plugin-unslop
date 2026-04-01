@@ -1,0 +1,29 @@
+schema: spec-driven
+
+context: |
+  Domain: ESLint plugin that catches common LLM-generated code smells (smart quotes,
+  invisible unicode, spaghetti imports, dead "shared" code, declaration ordering).
+  The plugin dogfoods itself.
+
+  Tech stack: TypeScript (strict: true), ESM-only, Node.js >=18
+  Package manager: npm
+  Tooling: tsup, ESLint v9 flat config, typescript-eslint, Vitest, Prettier
+
+  Conventions:
+  - Rule files use kebab-case, colocated with their tests in src/rules/
+  - Cyclomatic complexity max 8, max 50 lines/function, max 600 lines/file
+  - No `as` type assertions (as const is fine), prefer unknown + narrowing over any
+  - ESM imports with .js extensions, node: protocol for built-ins
+  - Prettier: 2 spaces, single quotes, no semicolons, trailing commas
+  - Exported symbols before private helpers (top-down reading order)
+
+rules:
+  proposal:
+    - Keep proposals scoped — avoid opportunistic refactors
+    - Reference existing rules and patterns in the codebase before proposing new ones
+    - Consider lint guardrails (complexity, line limits, no `as`) in feasibility
+    - Always include a "Non-goals" section
+  tasks:
+    - Read the rule, its helpers, and its test file before changing behavior
+    - Run the most targeted test first, then broader validation (npm run verify)
+    - Break tasks into chunks that touch one rule or utility at a time
