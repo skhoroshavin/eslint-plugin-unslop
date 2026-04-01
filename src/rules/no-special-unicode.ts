@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint'
-import type { Literal, Node, TemplateLiteral } from 'estree'
+import type { Literal, TemplateLiteral } from 'estree'
 import { createStringLiteralListener } from '../utils/string-literal-listener.js'
 
 export default {
@@ -36,9 +36,6 @@ export default {
             code: code.toString(16).toUpperCase().padStart(4, '0'),
           },
           fix(fixer) {
-            if (!isLiteralOrTemplateLiteral(node)) {
-              return null
-            }
             const fixedText = computeFixedText(text, node)
             if (!fixedText) return null
             return fixer.replaceText(node, fixedText)
@@ -48,10 +45,6 @@ export default {
     })
   },
 } satisfies Rule.RuleModule
-
-function isLiteralOrTemplateLiteral(node: Node): node is Literal | TemplateLiteral {
-  return node.type === 'Literal' || node.type === 'TemplateLiteral'
-}
 
 const BANNED_CHARS = new Map([
   ['\u201C', 'left double quotation mark'],
@@ -78,47 +71,42 @@ const BANNED_CHARS = new Map([
 const BANNED_CHARS_RE = new RegExp([...BANNED_CHARS.keys()].join('|'))
 
 function computeFixedText(text: string, node: Literal | TemplateLiteral): string | null {
-  const { content, wrapper } = extractContentAndWrapper(text, node)
+  const { content, wrapper } = extractContent(text, node)
   if (!content) return null
 
-  // Determine which wrapper quote we're dealing with
   const wrapperQuote = wrapper === '`' ? null : wrapper
+  const result = applyReplacements(content, wrapperQuote)
 
-  let hasSafeReplacement = false
-
-  // Apply only safe replacements (skip unsafe ones like smart quotes matching wrapper)
-  let result = content
-  for (const [char, replacement] of CHAR_REPLACEMENTS) {
-    if (content.includes(char) && isSafeReplacement(char, wrapperQuote)) {
-      hasSafeReplacement = true
-      result = result.split(char).join(replacement)
-    }
-  }
-
-  // If no safe replacements were made, nothing to fix
-  if (!hasSafeReplacement) {
-    return null
-  }
-
-  // Return wrapped result
+  if (!result) return null
   return wrapper + result + wrapper
 }
 
-function isSafeReplacement(char: string, wrapperQuote: string | null): boolean {
-  if (!wrapperQuote) return true
-  const replacement = CHAR_REPLACEMENTS.get(char)
-  if (!replacement) return true
-  // Check if replacement contains the wrapper quote character
-  if (wrapperQuote === '"' && replacement.includes('"')) return false
-  if (wrapperQuote === "'" && replacement.includes("'")) return false
-  return true
+function applyReplacements(content: string, wrapperQuote: string | null): string | null {
+  let result = content
+  let madeReplacement = false
+
+  for (const [char, replacement] of CHAR_REPLACEMENTS) {
+    if (!content.includes(char)) continue
+    if (isUnsafeReplacement(wrapperQuote, replacement)) continue
+
+    madeReplacement = true
+    result = result.split(char).join(replacement)
+  }
+
+  return madeReplacement ? result : null
 }
 
-function extractContentAndWrapper(
+function isUnsafeReplacement(wrapperQuote: string | null, replacement: string): boolean {
+  if (!wrapperQuote) return false
+  if (wrapperQuote === '"' && replacement.includes('"')) return true
+  if (wrapperQuote === "'" && replacement.includes("'")) return true
+  return false
+}
+
+function extractContent(
   text: string,
   node: Literal | TemplateLiteral,
 ): { content: string | null; wrapper: string } {
-  // For string literals, use node.raw directly to get the quoted content
   if (node.type === 'Literal' && typeof node.value === 'string' && typeof node.raw === 'string') {
     const quote = node.raw[0]
     if (quote === '"' || quote === "'") {
@@ -127,7 +115,6 @@ function extractContentAndWrapper(
     return { content: null, wrapper: '' }
   }
 
-  // For template literals, the text is already the raw content without outer backticks
   if (node.type === 'TemplateLiteral') {
     return { content: text, wrapper: '`' }
   }
