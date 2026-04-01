@@ -1,5 +1,6 @@
 import type { CallExpression, ExpressionStatement, Program } from 'estree'
 import type { Rule } from 'eslint'
+import { createSafeReorderFix } from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
 
 export function reportTestOrdering(program: Program, context: Rule.RuleContext): void {
@@ -8,8 +9,38 @@ export function reportTestOrdering(program: Program, context: Rule.RuleContext):
     return
   }
 
-  reportSetupOrder(entries, context)
-  reportTeardownOrder(entries, context)
+  const fixRange = buildTestPhaseFixRange(entries, context)
+  reportSetupOrder(entries, context, fixRange)
+  reportTeardownOrder(entries, context, fixRange)
+}
+
+function buildTestPhaseFixRange(
+  entries: TestPhaseEntry[],
+  context: Rule.RuleContext,
+): [number, number, string] | undefined {
+  if (entries.length < 2) return undefined
+
+  const ordered = getCanonicalPhaseEntries(entries)
+  if (isSameOrder(entries, ordered)) return undefined
+
+  const originalNodes = entries.map((entry) => entry.node)
+  const orderedNodes = ordered.map((entry) => entry.node)
+  return createSafeReorderFix(context.sourceCode, originalNodes, orderedNodes)
+}
+
+function getCanonicalPhaseEntries(entries: TestPhaseEntry[]): TestPhaseEntry[] {
+  const setup = entries.filter((entry) => entry.kind === 'setup')
+  const teardown = entries.filter((entry) => entry.kind === 'teardown')
+  const tests = entries.filter((entry) => entry.kind === 'test')
+  return [...setup, ...teardown, ...tests]
+}
+
+function isSameOrder(original: TestPhaseEntry[], candidate: TestPhaseEntry[]): boolean {
+  if (original.length !== candidate.length) return false
+  for (let i = 0; i < original.length; i += 1) {
+    if (original[i]?.index !== candidate[i]?.index) return false
+  }
+  return true
 }
 
 function collectTestPhaseEntries(program: Program): TestPhaseEntry[] {
@@ -65,7 +96,11 @@ function getRootName(node: CallExpression['callee']): string | undefined {
   return undefined
 }
 
-function reportSetupOrder(entries: TestPhaseEntry[], context: Rule.RuleContext): void {
+function reportSetupOrder(
+  entries: TestPhaseEntry[],
+  context: Rule.RuleContext,
+  fixRange: [number, number, string] | undefined,
+): void {
   const firstTeardown = findFirstIndex(entries, 'teardown')
   const firstTest = findFirstIndex(entries, 'test')
 
@@ -77,6 +112,10 @@ function reportSetupOrder(entries: TestPhaseEntry[], context: Rule.RuleContext):
         node: entry.node,
         messageId: 'setupBeforeTeardown',
         data: { hookName: entry.hookName },
+        fix(fixer) {
+          if (!fixRange) return null
+          return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+        },
       })
       continue
     }
@@ -86,12 +125,20 @@ function reportSetupOrder(entries: TestPhaseEntry[], context: Rule.RuleContext):
         node: entry.node,
         messageId: 'setupBeforeTests',
         data: { hookName: entry.hookName },
+        fix(fixer) {
+          if (!fixRange) return null
+          return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+        },
       })
     }
   }
 }
 
-function reportTeardownOrder(entries: TestPhaseEntry[], context: Rule.RuleContext): void {
+function reportTeardownOrder(
+  entries: TestPhaseEntry[],
+  context: Rule.RuleContext,
+  fixRange: [number, number, string] | undefined,
+): void {
   const firstTest = findFirstIndex(entries, 'test')
   if (firstTest < 0) return
 
@@ -102,6 +149,10 @@ function reportTeardownOrder(entries: TestPhaseEntry[], context: Rule.RuleContex
       node: entry.node,
       messageId: 'teardownBeforeTests',
       data: { hookName: entry.hookName },
+      fix(fixer) {
+        if (!fixRange) return null
+        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+      },
     })
   }
 }

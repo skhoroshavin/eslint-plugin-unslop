@@ -1,6 +1,7 @@
 import type { ExportNamedDeclaration, Node, Program, VariableDeclaration } from 'estree'
 import type { Rule, Scope } from 'eslint'
 import { reportClassOrdering } from './read-friendly-order/class-order.js'
+import { createSafeReorderFix, stableTopologicalOrder } from './read-friendly-order/fixer-utils.js'
 import { reportTestOrdering } from './read-friendly-order/test-order.js'
 
 const READ_FRIENDLY_ORDER_MESSAGES = {
@@ -26,6 +27,7 @@ export default {
       recommended: false,
     },
     schema: [],
+    fixable: 'code',
     messages: READ_FRIENDLY_ORDER_MESSAGES,
   },
   create(context: Rule.RuleContext) {
@@ -46,6 +48,7 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
   const helpers = collectHelpers(body)
   const refs = collectReferences(context.sourceCode.scopeManager.globalScope)
   const cyclicNames = findCyclicHelperNames(body, helpers, refs)
+  const fixRange = buildTopLevelFixRange({ body, helpers, refs, cyclicNames, context })
 
   for (const helper of helpers) {
     if (cyclicNames.has(helper.name)) continue
@@ -62,8 +65,51 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
         constantName: helper.name,
         symbolName: getSymbolName(consumer),
       },
+      fix(fixer) {
+        if (!fixRange) return null
+        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+      },
     })
   }
+}
+
+function buildTopLevelFixRange(input: TopLevelFixInput): [number, number, string] | undefined {
+  const { body, helpers, refs, cyclicNames, context } = input
+  if (body.length < 2) return undefined
+
+  const edges = collectTopLevelEdges(body, helpers, refs, cyclicNames)
+  if (edges.length === 0) return undefined
+
+  const order = stableTopologicalOrder(body.length, edges)
+  if (!order || isIdentityOrder(order)) return undefined
+
+  const orderedBody = order.map((index) => body[index])
+  return createSafeReorderFix(context.sourceCode, body, orderedBody)
+}
+
+function collectTopLevelEdges(
+  body: TopLevelNode[],
+  helpers: HelperDeclaration[],
+  refs: Scope.Reference[],
+  cyclicNames: Set<string>,
+): Array<[number, number]> {
+  const edges: Array<[number, number]> = []
+
+  for (const helper of helpers) {
+    if (cyclicNames.has(helper.name) || hasEagerReference(body, helper, refs)) continue
+    const consumer = findFirstConsumerEntry(body, helper, refs)
+    if (!consumer) continue
+    edges.push([consumer.index, helper.index])
+  }
+
+  return edges
+}
+
+function isIdentityOrder(order: number[]): boolean {
+  for (const [index, value] of order.entries()) {
+    if (index !== value) return false
+  }
+  return true
 }
 
 export function getTopLevelStatements(program: Program): TopLevelNode[] {
@@ -153,10 +199,18 @@ function findFirstConsumer(
   helper: HelperDeclaration,
   refs: Scope.Reference[],
 ): TopLevelNode | undefined {
+  return findFirstConsumerEntry(body, helper, refs)?.statement
+}
+
+function findFirstConsumerEntry(
+  body: TopLevelNode[],
+  helper: HelperDeclaration,
+  refs: Scope.Reference[],
+): { statement: TopLevelNode; index: number } | undefined {
   for (let i = helper.index + 1; i < body.length; i += 1) {
     const stmt = body[i]
     if (stmt.type === 'ExportNamedDeclaration' && !stmt.declaration) continue
-    if (statementUsesName(stmt, helper.name, refs)) return stmt
+    if (statementUsesName(stmt, helper.name, refs)) return { statement: stmt, index: i }
   }
   return undefined
 }
@@ -287,6 +341,14 @@ function getNamedExportName(statement: ExportNamedDeclaration): string {
 function getVarName(decl: VariableDeclaration): string | undefined {
   const [first] = decl.declarations
   return first?.id.type === 'Identifier' ? first.id.name : undefined
+}
+
+interface TopLevelFixInput {
+  body: TopLevelNode[]
+  helpers: HelperDeclaration[]
+  refs: Scope.Reference[]
+  cyclicNames: Set<string>
+  context: Rule.RuleContext
 }
 
 interface HelperDeclaration {

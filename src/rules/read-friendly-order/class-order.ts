@@ -1,14 +1,31 @@
 import type { ClassBody, Identifier, Node, Program } from 'estree'
 import type { Rule } from 'eslint'
+import { createSafeReorderFix, stableTopologicalOrder } from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
 
 export function reportClassOrdering(program: Program, context: Rule.RuleContext): void {
   for (const classNode of collectClassDeclarations(program)) {
     const members = collectClassMembers(classNode)
-    reportConstructorOrder(members, classNode, context)
-    reportPublicFieldOrder(members, context)
-    reportClassDependencyOrder(members, context)
+    const supportsFix = !hasUnsupportedClassMember(classNode)
+    const fixRange = supportsFix ? buildClassFixRange(members, context) : undefined
+    reportConstructorOrder(members, classNode, context, fixRange)
+    reportPublicFieldOrder(members, context, fixRange)
+    reportClassDependencyOrder(members, context, fixRange)
   }
+}
+
+function hasUnsupportedClassMember(classNode: ClassNode): boolean {
+  for (const member of classNode.body.body) {
+    if ('computed' in member && member.computed) return true
+    if (
+      'decorators' in member &&
+      Array.isArray(member.decorators) &&
+      member.decorators.length > 0
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 function collectClassDeclarations(program: Program): ClassNode[] {
@@ -46,6 +63,7 @@ function reportConstructorOrder(
   members: ClassMemberEntry[],
   classNode: ClassNode,
   context: Rule.RuleContext,
+  fixRange: [number, number, string] | undefined,
 ): void {
   const ctor = members.find((m) => m.kind === 'constructor')
   if (!ctor || ctor.index === 0) return
@@ -54,10 +72,18 @@ function reportConstructorOrder(
     node: ctor.node,
     messageId: 'constructorFirst',
     data: { className: classNode.id?.name ?? 'anonymous class' },
+    fix(fixer) {
+      if (!fixRange) return null
+      return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+    },
   })
 }
 
-function reportPublicFieldOrder(members: ClassMemberEntry[], context: Rule.RuleContext): void {
+function reportPublicFieldOrder(
+  members: ClassMemberEntry[],
+  context: Rule.RuleContext,
+  fixRange: [number, number, string] | undefined,
+): void {
   const ctorIndex = members.find((m) => m.kind === 'constructor')?.index ?? -1
   const startIndex = ctorIndex >= 0 ? ctorIndex + 1 : 0
   let seenOther = false
@@ -71,6 +97,10 @@ function reportPublicFieldOrder(members: ClassMemberEntry[], context: Rule.RuleC
           node: member.node,
           messageId: 'publicFieldOrder',
           data: { memberName: member.name },
+          fix(fixer) {
+            if (!fixRange) return null
+            return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+          },
         })
       }
       continue
@@ -80,7 +110,11 @@ function reportPublicFieldOrder(members: ClassMemberEntry[], context: Rule.RuleC
   }
 }
 
-function reportClassDependencyOrder(members: ClassMemberEntry[], context: Rule.RuleContext): void {
+function reportClassDependencyOrder(
+  members: ClassMemberEntry[],
+  context: Rule.RuleContext,
+  fixRange: [number, number, string] | undefined,
+): void {
   const others = members.filter((m) => m.kind === 'other')
 
   for (const member of others) {
@@ -91,8 +125,76 @@ function reportClassDependencyOrder(members: ClassMemberEntry[], context: Rule.R
       node: member.node,
       messageId: 'moveMemberBelow',
       data: { memberName: member.name, consumerName: consumer.name },
+      fix(fixer) {
+        if (!fixRange) return null
+        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+      },
     })
   }
+}
+
+function buildClassFixRange(
+  members: ClassMemberEntry[],
+  context: Rule.RuleContext,
+): [number, number, string] | undefined {
+  if (members.length < 2) return undefined
+
+  const orderedMembers = getCanonicalClassMembers(members, context)
+  if (!orderedMembers || isSameMemberOrder(members, orderedMembers)) return undefined
+
+  const originalNodes = members.map((member) => member.node)
+  const orderedNodes = orderedMembers.map((member) => member.node)
+  return createSafeReorderFix(context.sourceCode, originalNodes, orderedNodes)
+}
+
+function getCanonicalClassMembers(
+  members: ClassMemberEntry[],
+  context: Rule.RuleContext,
+): ClassMemberEntry[] | undefined {
+  const constructorMembers = members.filter((member) => member.kind === 'constructor')
+  const publicFields = members.filter((member) => member.kind === 'public-field')
+  const others = members.filter((member) => member.kind === 'other')
+
+  const orderedOthers = orderOtherMembers(others, context)
+  if (!orderedOthers) return undefined
+
+  return [...constructorMembers, ...publicFields, ...orderedOthers]
+}
+
+function orderOtherMembers(
+  others: ClassMemberEntry[],
+  context: Rule.RuleContext,
+): ClassMemberEntry[] | undefined {
+  const indexedOthers = others.map((member, indexInGroup) => ({ ...member, indexInGroup }))
+  const edges = collectOtherMemberEdges(indexedOthers, context)
+  if (edges.length === 0) return [...others]
+
+  const order = stableTopologicalOrder(indexedOthers.length, edges)
+  if (!order) return undefined
+  return order.map((index) => indexedOthers[index])
+}
+
+function collectOtherMemberEdges(
+  others: ClassMemberEntry[],
+  context: Rule.RuleContext,
+): Array<[number, number]> {
+  const edges: Array<[number, number]> = []
+
+  for (const member of others) {
+    const consumer = findFirstClassConsumer(others, member, context)
+    if (!consumer) continue
+    edges.push([consumer.indexInGroup, member.indexInGroup])
+  }
+
+  return edges
+}
+
+function isSameMemberOrder(original: ClassMemberEntry[], candidate: ClassMemberEntry[]): boolean {
+  if (original.length !== candidate.length) return false
+  for (let i = 0; i < original.length; i += 1) {
+    if (original[i]?.index !== candidate[i]?.index) return false
+  }
+  return true
 }
 
 function collectClassMembers(classNode: ClassNode): ClassMemberEntry[] {
@@ -101,7 +203,13 @@ function collectClassMembers(classNode: ClassNode): ClassMemberEntry[] {
   for (const [index, raw] of classNode.body.body.entries()) {
     const named = toNamedMember(raw)
     if (!named) continue
-    members.push({ name: named.name, node: named.node, index, kind: classifyMember(named.node) })
+    members.push({
+      name: named.name,
+      node: named.node,
+      index,
+      indexInGroup: -1,
+      kind: classifyMember(named.node),
+    })
   }
 
   return members
@@ -169,5 +277,6 @@ interface ClassMemberEntry {
   name: string
   node: Node
   index: number
+  indexInGroup: number
   kind: 'constructor' | 'public-field' | 'other'
 }
