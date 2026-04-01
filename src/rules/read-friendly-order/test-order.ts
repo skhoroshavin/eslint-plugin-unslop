@@ -1,6 +1,6 @@
 import type { CallExpression, ExpressionStatement, Program } from 'estree'
 import type { Rule } from 'eslint'
-import { createSafeReorderFix } from './fixer-utils.js'
+import { createReplaceTextRangeFix, createSafeReorderFix } from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
 
 export function reportTestOrdering(program: Program, context: Rule.RuleContext): void {
@@ -112,10 +112,7 @@ function reportSetupOrder(
         node: entry.node,
         messageId: 'setupBeforeTeardown',
         data: { hookName: entry.hookName },
-        fix(fixer) {
-          if (!fixRange) return null
-          return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-        },
+        fix: createReplaceTextRangeFix(fixRange),
       })
       continue
     }
@@ -125,10 +122,7 @@ function reportSetupOrder(
         node: entry.node,
         messageId: 'setupBeforeTests',
         data: { hookName: entry.hookName },
-        fix(fixer) {
-          if (!fixRange) return null
-          return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-        },
+        fix: createReplaceTextRangeFix(fixRange),
       })
     }
   }
@@ -149,10 +143,7 @@ function reportTeardownOrder(
       node: entry.node,
       messageId: 'teardownBeforeTests',
       data: { hookName: entry.hookName },
-      fix(fixer) {
-        if (!fixRange) return null
-        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-      },
+      fix: createReplaceTextRangeFix(fixRange),
     })
   }
 }

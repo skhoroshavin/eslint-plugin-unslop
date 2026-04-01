@@ -20,14 +20,23 @@ function applyEdges(
 ): void {
   for (const [from, to] of edges) {
     if (isEdgeIgnored(adjacency, from, to)) continue
-    adjacency[from]?.add(to)
+    adjacency[from].add(to)
     inDegree[to] += 1
   }
 }
 
 function isEdgeIgnored(adjacency: Array<Set<number>>, from: number, to: number): boolean {
   if (from === to) return true
-  return adjacency[from]?.has(to) ?? true
+  return adjacency[from].has(to)
+}
+
+export function createReplaceTextRangeFix(
+  fixRange: [number, number, string] | undefined,
+): (fixer: Rule.RuleFixer) => Rule.Fix | null {
+  return (fixer: Rule.RuleFixer): Rule.Fix | null => {
+    if (!fixRange) return null
+    return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
+  }
 }
 
 function consumeQueue(

@@ -1,6 +1,10 @@
 import type { ClassBody, Identifier, Node, Program } from 'estree'
 import type { Rule } from 'eslint'
-import { createSafeReorderFix, stableTopologicalOrder } from './fixer-utils.js'
+import {
+  createReplaceTextRangeFix,
+  createSafeReorderFix,
+  stableTopologicalOrder,
+} from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
 
 export function reportClassOrdering(program: Program, context: Rule.RuleContext): void {
@@ -72,10 +76,7 @@ function reportConstructorOrder(
     node: ctor.node,
     messageId: 'constructorFirst',
     data: { className: classNode.id?.name ?? 'anonymous class' },
-    fix(fixer) {
-      if (!fixRange) return null
-      return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-    },
+    fix: createReplaceTextRangeFix(fixRange),
   })
 }
 
@@ -97,10 +98,7 @@ function reportPublicFieldOrder(
           node: member.node,
           messageId: 'publicFieldOrder',
           data: { memberName: member.name },
-          fix(fixer) {
-            if (!fixRange) return null
-            return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-          },
+          fix: createReplaceTextRangeFix(fixRange),
         })
       }
       continue
@@ -125,10 +123,7 @@ function reportClassDependencyOrder(
       node: member.node,
       messageId: 'moveMemberBelow',
       data: { memberName: member.name, consumerName: consumer.name },
-      fix(fixer) {
-        if (!fixRange) return null
-        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-      },
+      fix: createReplaceTextRangeFix(fixRange),
     })
   }
 }

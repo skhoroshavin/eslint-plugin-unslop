@@ -1,7 +1,11 @@
 import type { ExportNamedDeclaration, Node, Program, VariableDeclaration } from 'estree'
 import type { Rule, Scope } from 'eslint'
 import { reportClassOrdering } from './read-friendly-order/class-order.js'
-import { createSafeReorderFix, stableTopologicalOrder } from './read-friendly-order/fixer-utils.js'
+import {
+  createReplaceTextRangeFix,
+  createSafeReorderFix,
+  stableTopologicalOrder,
+} from './read-friendly-order/fixer-utils.js'
 import { reportTestOrdering } from './read-friendly-order/test-order.js'
 
 const READ_FRIENDLY_ORDER_MESSAGES = {
@@ -54,7 +58,7 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
     if (cyclicNames.has(helper.name)) continue
     if (hasEagerReference(body, helper, refs)) continue
 
-    const consumer = findFirstConsumer(body, helper, refs)
+    const consumer = findFirstConsumerEntry(body, helper, refs)?.statement
     if (!consumer) continue
 
     context.report({
@@ -65,10 +69,7 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
         constantName: helper.name,
         symbolName: getSymbolName(consumer),
       },
-      fix(fixer) {
-        if (!fixRange) return null
-        return fixer.replaceTextRange([fixRange[0], fixRange[1]], fixRange[2])
-      },
+      fix: createReplaceTextRangeFix(fixRange),
     })
   }
 }
@@ -192,14 +193,6 @@ function collectVariableHelpers(decl: VariableDeclaration, index: number): Helpe
 
 function isFunctionInit(node: Node | null): boolean {
   return node?.type === 'ArrowFunctionExpression' || node?.type === 'FunctionExpression'
-}
-
-function findFirstConsumer(
-  body: TopLevelNode[],
-  helper: HelperDeclaration,
-  refs: Scope.Reference[],
-): TopLevelNode | undefined {
-  return findFirstConsumerEntry(body, helper, refs)?.statement
 }
 
 function findFirstConsumerEntry(
