@@ -75,14 +75,10 @@ export default {
 
 function extractTsProgram(context: Rule.RuleContext): ts.Program | undefined {
   const services = context.sourceCode.parserServices
-  if (!isRecord(services) || !('program' in services)) {
-    return undefined
-  }
-  const program = services.program
-  if (!isTsProgram(program)) {
-    return undefined
-  }
-  return program
+  if (!isRecord(services)) return undefined
+
+  const program = 'program' in services ? services.program : undefined
+  return isTsProgram(program) ? program : undefined
 }
 
 function isTsProgram(value: unknown): value is ts.Program {

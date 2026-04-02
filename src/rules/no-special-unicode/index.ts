@@ -46,29 +46,30 @@ export default {
   },
 } satisfies Rule.RuleModule
 
-const BANNED_CHARS = new Map([
-  ['\u201C', 'left double quotation mark'],
-  ['\u201D', 'right double quotation mark'],
-  ['\u2018', 'left single quotation mark'],
-  ['\u2019', 'right single quotation mark'],
-  ['\u00A0', 'non-breaking space'],
-  ['\u202F', 'narrow no-break space'],
-  ['\u2007', 'figure space'],
-  ['\u2008', 'punctuation space'],
-  ['\u2009', 'thin space'],
-  ['\u200A', 'hair space'],
-  ['\u200B', 'zero-width space'],
-  ['\u2002', 'en space'],
-  ['\u2003', 'em space'],
-  ['\u205F', 'medium mathematical space'],
-  ['\u3000', 'ideographic space'],
-  ['\uFEFF', 'zero-width no-break space'],
-  ['\u2013', 'en dash'],
-  ['\u2014', 'em dash'],
-  ['\u2026', 'horizontal ellipsis'],
-])
+const CHAR_RULES = [
+  { char: '\u201C', name: 'left double quotation mark', replacement: '"' },
+  { char: '\u201D', name: 'right double quotation mark', replacement: '"' },
+  { char: '\u2018', name: 'left single quotation mark', replacement: "'" },
+  { char: '\u2019', name: 'right single quotation mark', replacement: "'" },
+  { char: '\u00A0', name: 'non-breaking space', replacement: ' ' },
+  { char: '\u202F', name: 'narrow no-break space', replacement: ' ' },
+  { char: '\u2007', name: 'figure space', replacement: ' ' },
+  { char: '\u2008', name: 'punctuation space', replacement: ' ' },
+  { char: '\u2009', name: 'thin space', replacement: ' ' },
+  { char: '\u200A', name: 'hair space', replacement: ' ' },
+  { char: '\u200B', name: 'zero-width space', replacement: '' },
+  { char: '\u2002', name: 'en space', replacement: ' ' },
+  { char: '\u2003', name: 'em space', replacement: ' ' },
+  { char: '\u205F', name: 'medium mathematical space', replacement: ' ' },
+  { char: '\u3000', name: 'ideographic space', replacement: ' ' },
+  { char: '\uFEFF', name: 'zero-width no-break space', replacement: '' },
+  { char: '\u2013', name: 'en dash', replacement: '-' },
+  { char: '\u2014', name: 'em dash', replacement: '-' },
+  { char: '\u2026', name: 'horizontal ellipsis', replacement: '...' },
+]
 
-const BANNED_CHARS_RE = new RegExp([...BANNED_CHARS.keys()].join('|'))
+const BANNED_CHARS = new Map(CHAR_RULES.map(({ char, name }) => [char, name]))
+const BANNED_CHARS_RE = new RegExp(CHAR_RULES.map(({ char }) => char).join('|'))
 
 function computeFixedText(text: string, node: Literal | TemplateLiteral): string | null {
   const { content, wrapper } = extractContent(text, node)
@@ -96,6 +97,8 @@ function applyReplacements(content: string, wrapperQuote: string | null): string
   return madeReplacement ? result : null
 }
 
+const CHAR_REPLACEMENTS = new Map(CHAR_RULES.map(({ char, replacement }) => [char, replacement]))
+
 function isUnsafeReplacement(wrapperQuote: string | null, replacement: string): boolean {
   if (!wrapperQuote) return false
   if (wrapperQuote === '"' && replacement.includes('"')) return true
@@ -121,26 +124,3 @@ function extractContent(
 
   return { content: null, wrapper: '' }
 }
-
-// Map of banned characters to their ASCII replacements
-const CHAR_REPLACEMENTS = new Map([
-  ['\u201C', '"'], // left double quotation mark → "
-  ['\u201D', '"'], // right double quotation mark → "
-  ['\u2018', "'"], // left single quotation mark → '
-  ['\u2019', "'"], // right single quotation mark → '
-  ['\u00A0', ' '], // non-breaking space → space
-  ['\u202F', ' '], // narrow no-break space → space
-  ['\u2007', ' '], // figure space → space
-  ['\u2008', ' '], // punctuation space → space
-  ['\u2009', ' '], // thin space → space
-  ['\u200A', ' '], // hair space → space
-  ['\u200B', ''], // zero-width space → (removed)
-  ['\u2002', ' '], // en space → space
-  ['\u2003', ' '], // em space → space
-  ['\u205F', ' '], // medium mathematical space → space
-  ['\u3000', ' '], // ideographic space → space
-  ['\uFEFF', ''], // zero-width no-break space/BOM → (removed)
-  ['\u2013', '-'], // en dash → -
-  ['\u2014', '-'], // em dash → -
-  ['\u2026', '...'], // horizontal ellipsis → ...
-])

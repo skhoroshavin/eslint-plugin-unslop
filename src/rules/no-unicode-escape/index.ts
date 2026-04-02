@@ -40,11 +40,7 @@ function computeReplacement(text: string, node: Literal | TemplateLiteral): stri
   if (!allEscapesSafe(content)) return null
 
   // All escapes are safe, replace them all
-  const result = content.replace(UNICODE_ESCAPE_RE, (match) => {
-    const hex = match.slice(2)
-    const code = Number.parseInt(hex, 16)
-    return String.fromCharCode(code)
-  })
+  const result = content.replace(UNICODE_ESCAPE_RE, toLiteralCharacter)
 
   return wrapper + result + wrapper
 }
@@ -75,12 +71,19 @@ function allEscapesSafe(content: string): boolean {
   if (!escapes) return false
 
   for (const escape of escapes) {
-    const hex = escape.slice(2)
-    const code = Number.parseInt(hex, 16)
+    const code = parseEscapeCode(escape)
     if (isUnsafeChar(code)) return false
   }
 
   return true
+}
+
+function toLiteralCharacter(escape: string): string {
+  return String.fromCharCode(parseEscapeCode(escape))
+}
+
+function parseEscapeCode(escape: string): number {
+  return Number.parseInt(escape.slice(2), 16)
 }
 
 function isUnsafeChar(code: number): boolean {
