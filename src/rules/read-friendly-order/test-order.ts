@@ -1,145 +1,133 @@
 import type { CallExpression, ExpressionStatement, Program } from 'estree'
 import type { Rule } from 'eslint'
 import { createReplaceTextRangeFix, createSafeReorderFix, isSameIndexOrder } from './fixer-utils.js'
-import { getTopLevelStatements, type TopLevelNode } from './index.js'
+import { getTopLevelStatements } from './index.js'
 
 export function reportTestOrdering(program: Program, context: Rule.RuleContext): void {
-  const entries = collectTestPhaseEntries(program)
-  if (!entries.some((entry) => entry.kind === 'test')) {
-    return
-  }
+  const entries = collectEntries(program)
+  if (!entries.some((e) => e.kind === 'test')) return
 
-  const fixRange = buildTestPhaseFixRange(entries, context)
-  reportSetupOrder(entries, context, fixRange)
-  reportTeardownOrder(entries, context, fixRange)
+  const fixRange = buildTestFix(entries, context)
+  reportSetup(entries, context, fixRange)
+  reportTeardown(entries, context, fixRange)
 }
 
-function buildTestPhaseFixRange(
-  entries: TestPhaseEntry[],
+function collectEntries(program: Program): Entry[] {
+  const out: Entry[] = []
+  for (const [index, stmt] of getTopLevelStatements(program).entries()) {
+    if (stmt.type !== 'ExpressionStatement' || stmt.expression.type !== 'CallExpression') continue
+    const name = callRootName(stmt.expression)
+    if (!name) continue
+    const kind = classify(name)
+    if (kind) out.push({ index, kind, hookName: name, node: stmt })
+  }
+  return out
+}
+
+function classify(name: string): Entry['kind'] | undefined {
+  if (SETUP.has(name)) return 'setup'
+  if (TEARDOWN.has(name)) return 'teardown'
+  if (TESTS.has(name)) return 'test'
+  return undefined
+}
+
+const SETUP = new Set(['beforeAll', 'beforeEach', 'before'])
+
+const TEARDOWN = new Set(['afterAll', 'afterEach', 'after'])
+
+const TESTS = new Set(['test', 'it'])
+
+function callRootName(call: CallExpression): string | undefined {
+  const c = call.callee
+  if (c.type === 'Identifier') return c.name
+  if (c.type === 'MemberExpression') return rootName(c.object)
+  if (c.type === 'CallExpression') return callRootName(c)
+  return undefined
+}
+
+function rootName(node: CallExpression['callee']): string | undefined {
+  if (node.type === 'Identifier') return node.name
+  if (node.type === 'MemberExpression') return rootName(node.object)
+  if (node.type === 'CallExpression') return callRootName(node)
+  return undefined
+}
+
+function buildTestFix(
+  entries: Entry[],
   context: Rule.RuleContext,
 ): [number, number, string] | undefined {
   if (entries.length < 2) return undefined
-
-  const ordered = getCanonicalPhaseEntries(entries)
+  const ordered = canonicalEntries(entries)
   if (isSameIndexOrder(entries, ordered)) return undefined
-
-  const originalNodes = entries.map((entry) => entry.node)
-  const orderedNodes = ordered.map((entry) => entry.node)
-  return createSafeReorderFix(context.sourceCode, originalNodes, orderedNodes)
+  return createSafeReorderFix(
+    context.sourceCode,
+    entries.map((e) => e.node),
+    ordered.map((e) => e.node),
+  )
 }
 
-function getCanonicalPhaseEntries(entries: TestPhaseEntry[]): TestPhaseEntry[] {
-  const setup = entries.filter((entry) => entry.kind === 'setup')
-  const teardown = entries.filter((entry) => entry.kind === 'teardown')
-  const tests = entries.filter((entry) => entry.kind === 'test')
-  return [...setup, ...teardown, ...tests]
+function canonicalEntries(entries: Entry[]): Entry[] {
+  return [
+    ...entries.filter((e) => e.kind === 'setup'),
+    ...entries.filter((e) => e.kind === 'teardown'),
+    ...entries.filter((e) => e.kind === 'test'),
+  ]
 }
 
-function collectTestPhaseEntries(program: Program): TestPhaseEntry[] {
-  const entries: TestPhaseEntry[] = []
-
-  for (const [index, statement] of getTopLevelStatements(program).entries()) {
-    const entry = toTestPhaseEntry(statement, index)
-    if (entry) {
-      entries.push(entry)
-    }
-  }
-
-  return entries
-}
-
-function toTestPhaseEntry(statement: TopLevelNode, index: number): TestPhaseEntry | undefined {
-  if (statement.type !== 'ExpressionStatement' || statement.expression.type !== 'CallExpression') {
-    return undefined
-  }
-
-  const rootName = getCallRootName(statement.expression)
-  const kind = rootName ? classifyHookName(rootName) : undefined
-  if (!kind || !rootName) return undefined
-
-  return { index, kind, hookName: rootName, node: statement }
-}
-
-function classifyHookName(name: string): TestPhaseEntry['kind'] | undefined {
-  if (SETUP_HOOKS.has(name)) return 'setup'
-  if (TEARDOWN_HOOKS.has(name)) return 'teardown'
-  if (TEST_CALLS.has(name)) return 'test'
-  return undefined
-}
-
-const SETUP_HOOKS = new Set(['beforeAll', 'beforeEach', 'before'])
-const TEARDOWN_HOOKS = new Set(['afterAll', 'afterEach', 'after'])
-const TEST_CALLS = new Set(['test', 'it'])
-
-function getCallRootName(call: CallExpression): string | undefined {
-  return getRootName(call.callee)
-}
-
-function getRootName(node: CallExpression['callee']): string | undefined {
-  if (node.type === 'Identifier') return node.name
-  if (node.type === 'MemberExpression') return getRootName(node.object)
-  if (node.type === 'CallExpression') return getRootName(node.callee)
-  return undefined
-}
-
-function reportSetupOrder(
-  entries: TestPhaseEntry[],
+function reportSetup(
+  entries: Entry[],
   context: Rule.RuleContext,
   fixRange: [number, number, string] | undefined,
 ): void {
-  const firstTeardown = findFirstIndex(entries, 'teardown')
-  const firstTest = findFirstIndex(entries, 'test')
+  const firstTeardown = firstIndexOf(entries, 'teardown')
+  const firstTest = firstIndexOf(entries, 'test')
 
-  for (const entry of entries) {
-    if (entry.kind !== 'setup') continue
-
-    if (firstTeardown >= 0 && entry.index > firstTeardown) {
+  for (const e of entries) {
+    if (e.kind !== 'setup') continue
+    if (firstTeardown >= 0 && e.index > firstTeardown) {
       context.report({
-        node: entry.node,
+        node: e.node,
         messageId: 'setupBeforeTeardown',
-        data: { hookName: entry.hookName },
+        data: { hookName: e.hookName },
         fix: createReplaceTextRangeFix(fixRange),
       })
       continue
     }
-
-    if (firstTest >= 0 && entry.index > firstTest) {
+    if (firstTest >= 0 && e.index > firstTest) {
       context.report({
-        node: entry.node,
+        node: e.node,
         messageId: 'setupBeforeTests',
-        data: { hookName: entry.hookName },
+        data: { hookName: e.hookName },
         fix: createReplaceTextRangeFix(fixRange),
       })
     }
   }
 }
 
-function reportTeardownOrder(
-  entries: TestPhaseEntry[],
+function reportTeardown(
+  entries: Entry[],
   context: Rule.RuleContext,
   fixRange: [number, number, string] | undefined,
 ): void {
-  const firstTest = findFirstIndex(entries, 'test')
+  const firstTest = firstIndexOf(entries, 'test')
   if (firstTest < 0) return
-
-  for (const entry of entries) {
-    if (entry.kind !== 'teardown' || entry.index <= firstTest) continue
-
+  for (const e of entries) {
+    if (e.kind !== 'teardown' || e.index <= firstTest) continue
     context.report({
-      node: entry.node,
+      node: e.node,
       messageId: 'teardownBeforeTests',
-      data: { hookName: entry.hookName },
+      data: { hookName: e.hookName },
       fix: createReplaceTextRangeFix(fixRange),
     })
   }
 }
 
-function findFirstIndex(entries: TestPhaseEntry[], kind: TestPhaseEntry['kind']): number {
-  const match = entries.find((entry) => entry.kind === kind)
+function firstIndexOf(entries: Entry[], kind: Entry['kind']): number {
+  const match = entries.find((e) => e.kind === kind)
   return match ? match.index : -1
 }
 
-interface TestPhaseEntry {
+interface Entry {
   index: number
   kind: 'setup' | 'teardown' | 'test'
   hookName: string

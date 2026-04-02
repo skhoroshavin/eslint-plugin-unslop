@@ -8,7 +8,7 @@ import {
 } from './fixer-utils.js'
 import { reportTestOrdering } from './test-order.js'
 
-const READ_FRIENDLY_ORDER_MESSAGES = {
+const messages = {
   moveHelperBelow:
     'Place helper "{{helperName}}" below the top-level symbol "{{symbolName}}" that depends on it.',
   moveConstantBelow:
@@ -32,7 +32,7 @@ export default {
     },
     schema: [],
     fixable: 'code',
-    messages: READ_FRIENDLY_ORDER_MESSAGES,
+    messages,
   },
   create(context: Rule.RuleContext) {
     return {
@@ -50,111 +50,106 @@ export type TopLevelNode = Program['body'][number]
 function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): void {
   const body = getTopLevelStatements(program)
   const helpers = collectHelpers(body)
-  const refs = collectReferences(context.sourceCode.scopeManager.globalScope)
-  const cyclicNames = findCyclicHelperNames(body, helpers, refs)
-  const eagerHelperNames = findEagerHelperNames(body, helpers, refs)
-  const fixRange = buildTopLevelFixRange({
-    body,
-    helpers,
-    refs,
-    cyclicNames,
-    eagerHelperNames,
-    context,
-  })
+  const refs = gatherAllRefs(context.sourceCode.scopeManager.globalScope)
+  const cyclicNames = detectCyclicNames(helpers, body, refs)
+  const eagerNames = detectEagerNames(body, helpers, refs)
 
-  for (const helper of helpers) {
-    if (cyclicNames.has(helper.name)) continue
-    if (eagerHelperNames.has(helper.name)) continue
+  const fixRange = buildFixRange({ body, helpers, refs, cyclicNames, eagerNames, context })
 
-    const consumer = findFirstConsumerEntry(body, helper, refs)?.statement
+  for (const h of helpers) {
+    if (cyclicNames.has(h.name) || eagerNames.has(h.name)) continue
+    const consumer = firstConsumerAfter(body, h, refs)
     if (!consumer) continue
 
     context.report({
-      node: helper.node,
-      messageId: helper.kind === 'constant' ? 'moveConstantBelow' : 'moveHelperBelow',
+      node: h.node,
+      messageId: h.kind === 'constant' ? 'moveConstantBelow' : 'moveHelperBelow',
       data: {
-        helperName: helper.name,
-        constantName: helper.name,
-        symbolName: getSymbolName(consumer),
+        helperName: h.name,
+        constantName: h.name,
+        symbolName: symbolName(consumer.stmt),
       },
       fix: createReplaceTextRangeFix(fixRange),
     })
   }
 }
 
-function buildTopLevelFixRange(input: TopLevelFixInput): [number, number, string] | undefined {
-  const { body, helpers, refs, cyclicNames, eagerHelperNames, context } = input
-  if (body.length < 2) return undefined
-
-  const edges = collectTopLevelEdges({
-    body,
-    helpers,
-    refs,
-    cyclicNames,
-    eagerHelperNames,
-  })
-  if (edges.length === 0) return undefined
-
-  const order = stableTopologicalOrder(body.length, edges)
-  if (!order || isIdentityOrder(order)) return undefined
-
-  const orderedBody = order.map((index) => body[index])
-  return createSafeReorderFix(context.sourceCode, body, orderedBody)
-}
-
-function collectTopLevelEdges(input: TopLevelEdgesInput): Array<[number, number]> {
-  const { body, helpers, refs, cyclicNames, eagerHelperNames } = input
-  const edges: Array<[number, number]> = []
-
-  for (const helper of helpers) {
-    if (cyclicNames.has(helper.name) || eagerHelperNames.has(helper.name)) continue
-    const consumer = findFirstConsumerEntry(body, helper, refs)
-    if (!consumer) continue
-    edges.push([consumer.index, helper.index])
-  }
-
-  return edges
-}
-
-function isIdentityOrder(order: number[]): boolean {
-  return order.every((value, index) => index === value)
-}
-
 export function getTopLevelStatements(program: Program): TopLevelNode[] {
   return program.body.filter((s) => s.type !== 'ImportDeclaration')
 }
 
-function collectHelpers(body: TopLevelNode[]): HelperDeclaration[] {
-  const helpers: HelperDeclaration[] = []
-  for (const [index, statement] of body.entries()) {
-    helpers.push(...collectHelperEntries(statement, index))
-  }
-  return helpers
+function buildFixRange(input: FixRangeInput): [number, number, string] | undefined {
+  const { body, helpers, refs, cyclicNames, eagerNames, context } = input
+  if (body.length < 2) return undefined
+
+  const edges = collectEdges({ helpers, body, refs, cyclicNames, eagerNames })
+  if (edges.length === 0) return undefined
+
+  const order = stableTopologicalOrder(body.length, edges)
+  if (!order || order.every((v, i) => v === i)) return undefined
+
+  return createSafeReorderFix(
+    context.sourceCode,
+    body,
+    order.map((i) => body[i]),
+  )
 }
 
-function collectHelperEntries(statement: TopLevelNode, index: number): HelperDeclaration[] {
-  const typeName = getTypeDeclarationName(statement)
-  if (typeName) return [{ name: typeName, node: statement, index, kind: 'helper' }]
+function collectEdges(input: Omit<FixRangeInput, 'context'>): Array<[number, number]> {
+  const { helpers, body, refs, cyclicNames, eagerNames } = input
+  const edges: Array<[number, number]> = []
+  for (const h of helpers) {
+    if (cyclicNames.has(h.name) || eagerNames.has(h.name)) continue
+    const c = firstConsumerAfter(body, h, refs)
+    if (c) edges.push([c.index, h.index])
+  }
+  return edges
+}
 
-  if (statement.type === 'FunctionDeclaration' && statement.id) {
-    return [{ name: statement.id.name, node: statement, index, kind: 'helper' }]
+interface FixRangeInput {
+  body: TopLevelNode[]
+  helpers: Helper[]
+  refs: Scope.Reference[]
+  cyclicNames: Set<string>
+  eagerNames: Set<string>
+  context: Rule.RuleContext
+}
+
+function collectHelpers(body: TopLevelNode[]): Helper[] {
+  const result: Helper[] = []
+  for (const [index, stmt] of body.entries()) {
+    result.push(...extractHelpers(stmt, index))
+  }
+  return result
+}
+
+function extractHelpers(stmt: TopLevelNode, index: number): Helper[] {
+  const typeName = typeDeclarationName(stmt)
+  if (typeName) return [{ name: typeName, node: stmt, index, kind: 'helper' }]
+
+  if (stmt.type === 'FunctionDeclaration' && stmt.id) {
+    return [{ name: stmt.id.name, node: stmt, index, kind: 'helper' }]
   }
 
-  if (statement.type === 'ExportNamedDeclaration') {
-    return collectExportedHelpers(statement, index)
-  }
-
-  if (statement.type === 'VariableDeclaration') {
-    return collectVariableHelpers(statement, index)
-  }
-
+  if (stmt.type === 'ExportNamedDeclaration') return extractExportedHelpers(stmt, index)
+  if (stmt.type === 'VariableDeclaration') return varHelpers(stmt, index)
   return []
 }
 
-function getTypeDeclarationName(statement: TopLevelNode): string | undefined {
-  const t: string = statement.type
+function extractExportedHelpers(stmt: ExportNamedDeclaration, index: number): Helper[] {
+  const d = stmt.declaration
+  if (!d) return []
+  if (d.type === 'FunctionDeclaration' && d.id) {
+    return [{ name: d.id.name, node: stmt, index, kind: 'helper' }]
+  }
+  if (d.type === 'VariableDeclaration') return varHelpers(d, index)
+  return []
+}
+
+function typeDeclarationName(stmt: TopLevelNode): string | undefined {
+  const t: string = stmt.type
   if (t !== 'TSTypeAliasDeclaration' && t !== 'TSInterfaceDeclaration') return undefined
-  return hasIdentifierId(statement) ? statement.id.name : undefined
+  return hasIdentifierId(stmt) ? stmt.id.name : undefined
 }
 
 function hasIdentifierId(value: object): value is { id: { type: string; name: string } } {
@@ -163,276 +158,187 @@ function hasIdentifierId(value: object): value is { id: { type: string; name: st
   return !!id && typeof id === 'object' && 'type' in id && 'name' in id && id.type === 'Identifier'
 }
 
-function collectExportedHelpers(
-  statement: ExportNamedDeclaration,
-  index: number,
-): HelperDeclaration[] {
-  const decl = statement.declaration
-  if (!decl) return []
-
-  if (decl.type === 'FunctionDeclaration' && decl.id) {
-    return [{ name: decl.id.name, node: statement, index, kind: 'helper' }]
+function varHelpers(decl: VariableDeclaration, index: number): Helper[] {
+  const out: Helper[] = []
+  for (const d of decl.declarations) {
+    if (d.id.type !== 'Identifier') continue
+    const kind = classifyVarHelper(d.init ?? null, decl.kind)
+    if (kind) out.push({ name: d.id.name, node: d, index, kind })
   }
-
-  if (decl.type === 'VariableDeclaration') return collectVariableHelpers(decl, index)
-  return []
+  return out
 }
 
-function collectVariableHelpers(decl: VariableDeclaration, index: number): HelperDeclaration[] {
-  const helpers: HelperDeclaration[] = []
-
-  for (const item of decl.declarations) {
-    if (item.id.type !== 'Identifier') continue
-    const isFn = isFunctionInit(item.init ?? null)
-
-    if (!isFn && decl.kind !== 'const') continue
-
-    helpers.push({
-      name: item.id.name,
-      node: item,
-      index,
-      kind: isFn ? 'helper' : 'constant',
-    })
+function classifyVarHelper(init: Node | null, declKind: string): Helper['kind'] | undefined {
+  if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') {
+    return 'helper'
   }
-
-  return helpers
+  return declKind === 'const' ? 'constant' : undefined
 }
 
-function isFunctionInit(node: Node | null): boolean {
-  return node?.type === 'ArrowFunctionExpression' || node?.type === 'FunctionExpression'
-}
-
-function findFirstConsumerEntry(
+function firstConsumerAfter(
   body: TopLevelNode[],
-  helper: HelperDeclaration,
+  helper: Helper,
   refs: Scope.Reference[],
-): { statement: TopLevelNode; index: number } | undefined {
+): { stmt: TopLevelNode; index: number } | undefined {
   for (let i = helper.index + 1; i < body.length; i += 1) {
-    const stmt = body[i]
-    if (stmt.type === 'ExportNamedDeclaration' && !stmt.declaration) continue
-    if (statementUsesName(stmt, helper.name, refs)) return { statement: stmt, index: i }
+    const s = body[i]
+    if (s.type === 'ExportNamedDeclaration' && !s.declaration) continue
+    if (stmtUsesName(s, helper.name, refs)) return { stmt: s, index: i }
   }
   return undefined
 }
 
-function findCyclicHelperNames(
+function gatherAllRefs(scope: Scope.Scope | null): Scope.Reference[] {
+  if (!scope) return []
+  const out = [...scope.references]
+  for (const child of scope.childScopes) out.push(...gatherAllRefs(child))
+  return out
+}
+
+function detectCyclicNames(
+  helpers: Helper[],
   body: TopLevelNode[],
-  helpers: HelperDeclaration[],
   refs: Scope.Reference[],
 ): Set<string> {
   const deps = new Map<string, Set<string>>()
-
-  for (const helper of helpers) {
-    const helperDeps = new Set<string>()
+  for (const h of helpers) {
+    const s = new Set<string>()
     for (const other of helpers) {
-      if (other.name !== helper.name && statementUsesName(body[helper.index], other.name, refs)) {
-        helperDeps.add(other.name)
+      if (other.name !== h.name && stmtUsesName(body[h.index], other.name, refs)) {
+        s.add(other.name)
       }
     }
-    deps.set(helper.name, helperDeps)
+    deps.set(h.name, s)
   }
 
   const cyclic = new Set<string>()
-  for (const helper of helpers) {
-    if (canReachSelf(helper.name, deps)) cyclic.add(helper.name)
+  for (const h of helpers) {
+    if (reachesSelf(h.name, deps)) cyclic.add(h.name)
   }
   return cyclic
 }
 
-function statementUsesName(
-  statement: TopLevelNode,
-  name: string,
-  refs: Scope.Reference[],
-): boolean {
-  const range = statement.range
-  if (!range) return false
-
+function stmtUsesName(stmt: TopLevelNode, name: string, refs: Scope.Reference[]): boolean {
+  if (!stmt.range) return false
   for (const ref of refs) {
     if (ref.identifier.name !== name) continue
-    const idRange = ref.identifier.range
-    if (!idRange) continue
-    if (idRange[0] >= range[0] && idRange[1] <= range[1]) return true
+    const r = ref.identifier.range
+    if (r && r[0] >= stmt.range[0] && r[1] <= stmt.range[1]) return true
   }
-
   return false
 }
 
-function canReachSelf(start: string, deps: Map<string, Set<string>>): boolean {
+function reachesSelf(start: string, deps: Map<string, Set<string>>): boolean {
   const visited = new Set<string>()
   const queue = [...(deps.get(start) ?? [])]
-
   while (queue.length > 0) {
-    const current = queue.shift()
-    if (current === undefined) break
-    if (current === start) return true
-    if (visited.has(current)) continue
-    visited.add(current)
-    for (const dep of deps.get(current) ?? []) queue.push(dep)
+    const cur = queue.shift()!
+    if (cur === start) return true
+    if (visited.has(cur)) continue
+    visited.add(cur)
+    for (const d of deps.get(cur) ?? []) queue.push(d)
   }
-
   return false
 }
 
-function collectReferences(scope: Scope.Scope | null): Scope.Reference[] {
-  if (!scope) return []
-  const refs = [...scope.references]
-  for (const child of scope.childScopes) {
-    refs.push(...collectReferences(child))
-  }
-  return refs
-}
-
-function findEagerHelperNames(
+function detectEagerNames(
   body: TopLevelNode[],
-  helpers: HelperDeclaration[],
+  helpers: Helper[],
   refs: Scope.Reference[],
 ): Set<string> {
-  const helperNames = new Set(helpers.map((helper) => helper.name))
-  const deps = collectHelperRuntimeDependencies(body, helpers, refs, helperNames)
-  const roots = collectEagerRootNames(body, refs, helperNames)
-  return collectReachableNames(roots, deps)
-}
-
-function collectHelperRuntimeDependencies(
-  body: TopLevelNode[],
-  helpers: HelperDeclaration[],
-  refs: Scope.Reference[],
-  helperNames: Set<string>,
-): Map<string, Set<string>> {
-  const deps = new Map<string, Set<string>>()
-  for (const helper of helpers) {
-    const statement = body[helper.index]
-    if (!statement) continue
-    const names = collectRuntimeNamesInStatement(statement, refs, helperNames)
-    names.delete(helper.name)
-    deps.set(helper.name, names)
+  const helperNames = new Set(helpers.map((h) => h.name))
+  const helperDeps = new Map<string, Set<string>>()
+  for (const h of helpers) {
+    const s = body[h.index]
+    if (!s) continue
+    const names = runtimeNamesIn(s, refs, helperNames)
+    names.delete(h.name)
+    helperDeps.set(h.name, names)
   }
-  return deps
-}
 
-function collectEagerRootNames(
-  body: TopLevelNode[],
-  refs: Scope.Reference[],
-  helperNames: Set<string>,
-): Set<string> {
   const roots = new Set<string>()
-
   for (const ref of refs) {
-    if (!isRuntimeHelperReadReference(ref, helperNames)) continue
-    if (!isEagerRefInTopLevelStatement(ref, body)) continue
+    if (!isRuntimeRead(ref, helperNames)) continue
+    if (!isEagerTopLevelRef(ref, body)) continue
     roots.add(ref.identifier.name)
   }
 
-  return roots
+  return reachableFrom(roots, helperDeps)
 }
 
-function isEagerRefInTopLevelStatement(ref: Scope.Reference, body: TopLevelNode[]): boolean {
-  if (ref.from.type !== 'module' && ref.from.type !== 'global') return false
-  const statement = findTopLevelStatementForRef(body, ref)
-  if (!statement) return false
-  return statement.type !== 'ExportNamedDeclaration' || !!statement.declaration
-}
-
-function findTopLevelStatementForRef(
-  body: TopLevelNode[],
-  ref: Scope.Reference,
-): TopLevelNode | undefined {
-  return body.find((statement) => isReferenceInsideStatement(ref, statement))
-}
-
-function collectRuntimeNamesInStatement(
-  statement: TopLevelNode,
-  refs: Scope.Reference[],
-  helperNames: Set<string>,
-): Set<string> {
-  const names = new Set<string>()
-  if (!statement.range) return names
-
-  for (const ref of refs) {
-    if (!isRuntimeHelperReadReference(ref, helperNames)) continue
-    if (!isReferenceInsideStatement(ref, statement)) continue
-    names.add(ref.identifier.name)
-  }
-
-  return names
-}
-
-function isReferenceInsideStatement(ref: Scope.Reference, statement: TopLevelNode): boolean {
-  const range = ref.identifier.range
-  if (!range || !statement.range) return false
-  return range[0] >= statement.range[0] && range[1] <= statement.range[1]
-}
-
-function collectReachableNames(roots: Set<string>, deps: Map<string, Set<string>>): Set<string> {
-  const reachable = new Set<string>()
-  const queue = [...roots]
-
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current || reachable.has(current)) continue
-    reachable.add(current)
-    for (const dep of deps.get(current) ?? []) queue.push(dep)
-  }
-
-  return reachable
-}
-
-function isRuntimeHelperReadReference(ref: Scope.Reference, helperNames: Set<string>): boolean {
-  if (isTypeReference(ref)) return false
-  if (!isReadReference(ref)) return false
-  return helperNames.has(ref.identifier.name)
-}
-
-function isTypeReference(ref: Scope.Reference): boolean {
-  return 'isTypeReference' in ref && ref.isTypeReference === true
-}
-
-function isReadReference(ref: Scope.Reference): boolean {
-  return typeof ref.isRead === 'function' ? ref.isRead() : true
-}
-
-function getSymbolName(statement: TopLevelNode): string {
-  if (statement.type === 'ExportDefaultDeclaration') return 'default export'
-  if (statement.type === 'ExportNamedDeclaration') return getNamedExportName(statement)
-  if (statement.type === 'FunctionDeclaration' && statement.id) return statement.id.name
-  if (statement.type === 'VariableDeclaration')
-    return getVarName(statement) ?? 'top-level statement'
-  return 'top-level statement'
-}
-
-function getNamedExportName(statement: ExportNamedDeclaration): string {
-  const decl = statement.declaration
-  if (!decl) return 'named export'
-  if (decl.type === 'FunctionDeclaration' && decl.id) return decl.id.name
-  if (decl.type === 'VariableDeclaration') return getVarName(decl) ?? 'named export'
-  return 'named export'
-}
-
-function getVarName(decl: VariableDeclaration): string | undefined {
-  const [first] = decl.declarations
-  return first?.id.type === 'Identifier' ? first.id.name : undefined
-}
-
-interface TopLevelFixInput {
-  body: TopLevelNode[]
-  helpers: HelperDeclaration[]
-  refs: Scope.Reference[]
-  cyclicNames: Set<string>
-  eagerHelperNames: Set<string>
-  context: Rule.RuleContext
-}
-
-interface TopLevelEdgesInput {
-  body: TopLevelNode[]
-  helpers: HelperDeclaration[]
-  refs: Scope.Reference[]
-  cyclicNames: Set<string>
-  eagerHelperNames: Set<string>
-}
-
-interface HelperDeclaration {
+interface Helper {
   name: string
   node: Node
   index: number
   kind: 'helper' | 'constant'
+}
+
+function isEagerTopLevelRef(ref: Scope.Reference, body: TopLevelNode[]): boolean {
+  if (ref.from.type !== 'module' && ref.from.type !== 'global') return false
+  const stmt = body.find(
+    (s) =>
+      s.range &&
+      ref.identifier.range &&
+      ref.identifier.range[0] >= s.range[0] &&
+      ref.identifier.range[1] <= s.range[1],
+  )
+  if (!stmt) return false
+  return stmt.type !== 'ExportNamedDeclaration' || !!stmt.declaration
+}
+
+function runtimeNamesIn(
+  stmt: TopLevelNode,
+  refs: Scope.Reference[],
+  helperNames: Set<string>,
+): Set<string> {
+  const names = new Set<string>()
+  if (!stmt.range) return names
+  for (const ref of refs) {
+    if (!isRuntimeRead(ref, helperNames)) continue
+    const r = ref.identifier.range
+    if (r && r[0] >= stmt.range[0] && r[1] <= stmt.range[1]) {
+      names.add(ref.identifier.name)
+    }
+  }
+  return names
+}
+
+function isRuntimeRead(ref: Scope.Reference, helperNames: Set<string>): boolean {
+  if ('isTypeReference' in ref && ref.isTypeReference === true) return false
+  const isRead = typeof ref.isRead === 'function' ? ref.isRead() : true
+  if (!isRead) return false
+  return helperNames.has(ref.identifier.name)
+}
+
+function reachableFrom(roots: Set<string>, deps: Map<string, Set<string>>): Set<string> {
+  const reached = new Set<string>()
+  const queue = [...roots]
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    if (reached.has(cur)) continue
+    reached.add(cur)
+    for (const d of deps.get(cur) ?? []) queue.push(d)
+  }
+  return reached
+}
+
+function symbolName(stmt: TopLevelNode): string {
+  if (stmt.type === 'ExportDefaultDeclaration') return 'default export'
+  if (stmt.type === 'ExportNamedDeclaration') return namedExportName(stmt)
+  if (stmt.type === 'FunctionDeclaration' && stmt.id) return stmt.id.name
+  if (stmt.type === 'VariableDeclaration') return firstVarName(stmt) ?? 'top-level statement'
+  return 'top-level statement'
+}
+
+function namedExportName(stmt: ExportNamedDeclaration): string {
+  const d = stmt.declaration
+  if (!d) return 'named export'
+  if (d.type === 'FunctionDeclaration' && d.id) return d.id.name
+  if (d.type === 'VariableDeclaration') return firstVarName(d) ?? 'named export'
+  return 'named export'
+}
+
+function firstVarName(decl: VariableDeclaration): string | undefined {
+  const [first] = decl.declarations
+  return first?.id.type === 'Identifier' ? first.id.name : undefined
 }
