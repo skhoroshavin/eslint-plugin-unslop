@@ -141,6 +141,32 @@ const EAGER_EVAL_VALID_CASES = [
       '\n',
     ),
   },
+  {
+    code: [
+      "if (import.meta.url === 'file:///tmp/run.js') main()",
+      '',
+      "const BUMP_ARGS = ['dev', 'patch']",
+      '',
+      'function main() {',
+      '  return BUMP_ARGS.length',
+      '}',
+    ].join('\n'),
+  },
+  {
+    code: [
+      'const LIMIT = 3',
+      '',
+      "if (import.meta.url === 'file:///tmp/run.js') main()",
+      '',
+      'function main() {',
+      '  return run()',
+      '}',
+      '',
+      'function run() {',
+      '  return LIMIT',
+      '}',
+    ].join('\n'),
+  },
 ]
 
 const INVALID_CASES = [

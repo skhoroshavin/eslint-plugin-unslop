@@ -281,44 +281,117 @@ function collectReferences(scope: Scope.Scope | null): Scope.Reference[] {
   return refs
 }
 
-function hasEagerReference(
+function findEagerHelperNames(
   body: TopLevelNode[],
-  helper: HelperDeclaration,
+  helpers: HelperDeclaration[],
   refs: Scope.Reference[],
-): boolean {
-  for (let i = helper.index + 1; i < body.length; i += 1) {
-    const stmt = body[i]
-    if (stmt.type === 'ExportNamedDeclaration' && !stmt.declaration) continue
-    if (statementHasEagerUse(stmt, helper.name, refs)) return true
-  }
-  return false
+): Set<string> {
+  const helperNames = new Set(helpers.map((helper) => helper.name))
+  const deps = collectHelperRuntimeDependencies(body, helpers, refs, helperNames)
+  const roots = collectEagerRootNames(body, refs, helperNames)
+  return collectReachableNames(roots, deps)
 }
 
-function statementHasEagerUse(
-  statement: TopLevelNode,
-  name: string,
+function collectHelperRuntimeDependencies(
+  body: TopLevelNode[],
+  helpers: HelperDeclaration[],
   refs: Scope.Reference[],
-): boolean {
-  const range = statement.range
-  if (!range) return false
+  helperNames: Set<string>,
+): Map<string, Set<string>> {
+  const deps = new Map<string, Set<string>>()
+  for (const helper of helpers) {
+    const statement = body[helper.index]
+    const names = collectRuntimeNamesInStatement(statement, refs, helperNames)
+    names.delete(helper.name)
+    deps.set(helper.name, names)
+  }
+  return deps
+}
+
+function collectEagerRootNames(
+  body: TopLevelNode[],
+  refs: Scope.Reference[],
+  helperNames: Set<string>,
+): Set<string> {
+  const roots = new Set<string>()
 
   for (const ref of refs) {
-    if (ref.identifier.name !== name || isTypeReference(ref)) continue
-    if (isEagerRefInRange(ref, range)) return true
+    if (isTypeReference(ref)) continue
+    if (!isReadReference(ref)) continue
+    const name = ref.identifier.name
+    if (!helperNames.has(name)) continue
+    if (!isEagerRefInTopLevelStatement(ref, body)) continue
+    roots.add(name)
   }
 
-  return false
+  return roots
 }
 
-function isEagerRefInRange(ref: Scope.Reference, range: [number, number]): boolean {
+function isEagerRefInTopLevelStatement(ref: Scope.Reference, body: TopLevelNode[]): boolean {
+  if (ref.from.type !== 'module' && ref.from.type !== 'global') return false
+  const statement = findTopLevelStatementForRef(body, ref)
+  if (!statement) return false
+  return statement.type !== 'ExportNamedDeclaration' || !!statement.declaration
+}
+
+function findTopLevelStatementForRef(
+  body: TopLevelNode[],
+  ref: Scope.Reference,
+): TopLevelNode | undefined {
   const idRange = ref.identifier.range
-  if (!idRange) return false
-  const inside = idRange[0] >= range[0] && idRange[1] <= range[1]
-  return inside && (ref.from.type === 'module' || ref.from.type === 'global')
+  if (!idRange) return undefined
+  return body.find((statement) => isRangeInsideStatement(idRange, statement))
+}
+
+function collectRuntimeNamesInStatement(
+  statement: TopLevelNode | undefined,
+  refs: Scope.Reference[],
+  helperNames: Set<string>,
+): Set<string> {
+  const names = new Set<string>()
+  const range = statement?.range
+  if (!range) return names
+
+  for (const ref of refs) {
+    if (isTypeReference(ref)) continue
+    if (!isReadReference(ref)) continue
+    const name = ref.identifier.name
+    if (!helperNames.has(name)) continue
+    if (!isRangeInsideStatement(ref.identifier.range, statement)) continue
+    names.add(name)
+  }
+
+  return names
+}
+
+function isRangeInsideStatement(
+  range: [number, number] | undefined,
+  statement: TopLevelNode,
+): boolean {
+  if (!range || !statement.range) return false
+  return range[0] >= statement.range[0] && range[1] <= statement.range[1]
+}
+
+function collectReachableNames(roots: Set<string>, deps: Map<string, Set<string>>): Set<string> {
+  const reachable = new Set<string>()
+  const queue = [...roots]
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current || reachable.has(current)) continue
+    reachable.add(current)
+    for (const dep of deps.get(current) ?? []) queue.push(dep)
+  }
+
+  return reachable
 }
 
 function isTypeReference(ref: Scope.Reference): boolean {
   return 'isTypeReference' in ref && ref.isTypeReference === true
+}
+
+function isReadReference(ref: Scope.Reference): boolean {
+  return typeof ref.isRead === 'function' ? ref.isRead() : true
 }
 
 function getSymbolName(statement: TopLevelNode): string {
