@@ -1,0 +1,15 @@
+{
+  "minLines": 6,
+  "languages": ["javascript", "typescript"],
+  "reporters": ["json", "html"],
+  "output": "reports/jscpd",
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.opencode/**",
+    "reports/**",
+    "**/__fixtures__/**",
+    "**/fixtures/**",
+    "**/*.d.ts"
+  ]
+}

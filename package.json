@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsup",
     "fix": "knip --fix && eslint . --fix && prettier . --write",
-    "verify": "prettier . --check && knip && depcruise src && tsc --noEmit && tsup && eslint .",
+    "verify": "prettier . --check && knip && depcruise src && jscpd --config .jscpd.json && tsc --noEmit && tsup && eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
