@@ -44,7 +44,7 @@ Test files inside `src/rules/<rule>/` MUST treat the rule as a black-box module.
 
 ### Requirement: Architecture boundaries SHALL be enforced by an allowlist-style dependency policy
 
-The repository SHALL define dependency-cruiser rules as readable allowlists that describe the allowed dependencies for the rule registry, rule implementation files, and rule tests. Any undeclared dependency edge affecting these areas MUST fail validation.
+The repository SHALL define dependency-cruiser rules as readable allowlists using `allowed` rules (not blacklist-style inversion) that describe the allowed dependencies for the plugin entrypoint, rule registry, rule implementation files, rule tests, and utility files under `src/utils`. Any undeclared dependency edge affecting these areas MUST fail validation.
 
 #### Scenario: Declared allowed import
 
@@ -55,6 +55,25 @@ The repository SHALL define dependency-cruiser rules as readable allowlists that
 
 - **WHEN** a file imports a dependency that is not listed in its allowlist zone
 - **THEN** architecture validation MUST fail
+
+#### Scenario: Utility file imports from a rule module
+
+- **WHEN** a file under `src/utils/` imports from `src/rules/`
+- **THEN** architecture validation MUST fail
+
+#### Scenario: Allowlist rules are human-readable
+
+- **WHEN** dependency-cruiser allowlist rules are defined
+- **THEN** each allowlist rule MUST include a human-readable identifier (for example, a comment label)
+
+### Requirement: Architecture validation SHALL be wired through existing repository scripts
+
+The repository SHALL run dependency-cruiser as part of existing validation scripts, without adding standalone helper scripts solely for architecture checks.
+
+#### Scenario: Running repository verification
+
+- **WHEN** `npm run verify` is executed
+- **THEN** dependency-cruiser architecture validation MUST run as part of that script
 
 ### Requirement: Repository self-linting SHALL treat shared areas as directory-based cohesion units
 

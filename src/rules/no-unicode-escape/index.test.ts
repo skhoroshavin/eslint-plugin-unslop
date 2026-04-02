@@ -1,6 +1,6 @@
 import { test } from 'vitest'
-import rule from './no-unicode-escape.js'
-import { ruleTester } from '../utils/test-fixtures.js'
+import rule from './index.js'
+import { ruleTester } from '../../utils/test-fixtures.js'
 
 test('flags unicode escapes and allows literal characters', () => {
   ruleTester.run('no-unicode-escape', rule, {

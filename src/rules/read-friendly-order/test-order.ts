@@ -1,7 +1,7 @@
 import type { CallExpression, ExpressionStatement, Program } from 'estree'
 import type { Rule } from 'eslint'
 import { createReplaceTextRangeFix, createSafeReorderFix } from './fixer-utils.js'
-import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
+import { getTopLevelStatements, type TopLevelNode } from './index.js'
 
 export function reportTestOrdering(program: Program, context: Rule.RuleContext): void {
   const entries = collectTestPhaseEntries(program)

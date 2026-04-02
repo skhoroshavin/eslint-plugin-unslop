@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { Rule } from 'eslint'
-import { toPosix } from '../utils/path-helpers.js'
-import { readSourceRootOption } from '../utils/rule-options.js'
-import { resolveSourceContext } from '../utils/source-root.js'
+import { toPosix } from '../../utils/path-helpers.js'
+import { readSourceRootOption } from '../../utils/rule-options.js'
+import { resolveSourceContext } from '../../utils/source-root.js'
 
 const NO_DEEP_IMPORTS_SCHEMA = [
   {

@@ -41,7 +41,7 @@ export default [
       },
     },
     rules: {
-      'unslop/no-false-sharing': ['error', { dirs: [{ path: 'src/utils' }] }],
+      'unslop/no-false-sharing': ['error', { dirs: [{ path: 'src/utils', mode: 'dir' }] }],
     },
   },
   {

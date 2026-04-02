@@ -1,8 +1,8 @@
 import type { Rule } from 'eslint'
 import type ts from 'typescript'
-import { resolveSourceContext } from '../utils/source-root.js'
-import { isRecord, readDirsOption, readSourceRootOption } from '../utils/rule-options.js'
-import { runConsumerCheck } from './no-false-sharing/analysis.js'
+import { resolveSourceContext } from '../../utils/source-root.js'
+import { isRecord, readDirsOption, readSourceRootOption } from '../../utils/rule-options.js'
+import { runConsumerCheck } from './analysis.js'
 
 const SCHEMA = [
   {

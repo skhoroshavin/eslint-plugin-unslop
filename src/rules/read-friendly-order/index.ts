@@ -1,12 +1,12 @@
 import type { ExportNamedDeclaration, Node, Program, VariableDeclaration } from 'estree'
 import type { Rule, Scope } from 'eslint'
-import { reportClassOrdering } from './read-friendly-order/class-order.js'
+import { reportClassOrdering } from './class-order.js'
 import {
   createReplaceTextRangeFix,
   createSafeReorderFix,
   stableTopologicalOrder,
-} from './read-friendly-order/fixer-utils.js'
-import { reportTestOrdering } from './read-friendly-order/test-order.js'
+} from './fixer-utils.js'
+import { reportTestOrdering } from './test-order.js'
 
 const READ_FRIENDLY_ORDER_MESSAGES = {
   moveHelperBelow:

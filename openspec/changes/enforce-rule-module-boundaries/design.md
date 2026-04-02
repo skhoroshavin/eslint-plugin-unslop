@@ -35,7 +35,9 @@ Alternative considered: separate `rule.ts` from `index.ts` for every rule. Rejec
 
 ### Decision: Enforce architecture with dependency-cruiser allowlists
 
-Dependency-cruiser will describe allowed edges for three zones: the rule registry, rule implementation files, and rule tests. Any undeclared edge fails by default. This captures the intended architecture more directly than a blacklist of forbidden imports.
+Dependency-cruiser will describe allowed edges for rule-focused zones using `allowed` rules (not `forbidden`/`pathNot` inversion): plugin entrypoint, rule registry, rule implementation files, rule tests, and `src/utils` files. Any undeclared edge in these zones fails by default. This captures the intended architecture more directly than a blacklist of forbidden imports.
+
+The `src/utils` zone is explicitly constrained to local imports within `src/utils` plus Node built-ins and external packages, which prevents accidental imports from `src/rules`.
 
 Alternative considered: use only conventions or ESLint restrictions. Rejected because the desired boundaries depend on folder relationships, and dependency-cruiser is a better fit for repository structure rules.
 
@@ -44,6 +46,10 @@ Alternative considered: use only conventions or ESLint restrictions. Rejected be
 Rule tests remain black-box with respect to their own rule implementation, while still being able to use shared helpers such as `src/utils/test-fixtures.ts`. This preserves the public/private boundary without forcing duplicated test harness code into every rule folder.
 
 Alternative considered: require tests to import only `src/rules/<rule>/index.ts` and nothing else. Rejected because it would make shared parser and fixture helpers awkward to reuse.
+
+### Decision: Keep dependency-cruiser integrated into existing scripts
+
+Architecture validation is wired into existing repository scripts (specifically `verify`) instead of introducing new top-level helper scripts. This keeps `package.json` concise while still enforcing boundaries in normal validation flow.
 
 ### Decision: Switch `unslop/no-false-sharing` to directory mode for repository linting
 

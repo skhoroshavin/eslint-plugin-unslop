@@ -1,6 +1,6 @@
 import type { Rule } from 'eslint'
 import type { Literal, TemplateLiteral } from 'estree'
-import { createStringLiteralListener } from '../utils/string-literal-listener.js'
+import { createStringLiteralListener } from '../../utils/string-literal-listener.js'
 
 export default {
   meta: {

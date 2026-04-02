@@ -5,7 +5,7 @@ import {
   createSafeReorderFix,
   stableTopologicalOrder,
 } from './fixer-utils.js'
-import { getTopLevelStatements, type TopLevelNode } from '../read-friendly-order.js'
+import { getTopLevelStatements, type TopLevelNode } from './index.js'
 
 export function reportClassOrdering(program: Program, context: Rule.RuleContext): void {
   for (const classNode of collectClassDeclarations(program)) {

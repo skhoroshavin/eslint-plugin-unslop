@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import parser from '@typescript-eslint/parser'
 import { RuleTester } from 'eslint'
-import rule from './read-friendly-order.js'
+import rule from './index.js'
 
 test('autofixes class member ordering', () => {
   runClassOrderingCases()

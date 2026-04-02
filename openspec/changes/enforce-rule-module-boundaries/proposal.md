@@ -8,7 +8,7 @@ The rules codebase has started to develop rule-specific helpers and structural c
 - Restrict `src/rules/index.ts` to importing only `src/rules/<rule>/index.ts` files.
 - Prevent rules from importing code from other rules, while still allowing shared dependencies from `src/utils` and external packages.
 - Treat rule tests as black-box consumers by allowing them to import only their rule's `index.ts` plus approved shared test utilities.
-- Add a minimal dependency-cruiser configuration that enforces these architectural boundaries with an allowlist-style policy.
+- Add a minimal dependency-cruiser configuration that enforces these architectural boundaries with an allowlist-style policy, including `src/utils` boundaries (no utils -> rules imports).
 - Update `unslop/no-false-sharing` configuration to use directory mode so the repository's own linting matches the new folder-based cohesion model.
 
 ## Non-goals
@@ -16,7 +16,7 @@ The rules codebase has started to develop rule-specific helpers and structural c
 - Changing rule behavior, diagnostics, or autofix semantics.
 - Introducing nested subfolder conventions inside individual rule folders.
 - Standardizing private helper filenames beyond the new public-entrypoint rule.
-- Expanding dependency-cruiser coverage beyond the rule architecture boundaries described here.
+- Expanding dependency-cruiser coverage beyond the rule architecture boundaries and closely related utility boundaries described here.
 
 ## Capabilities
 

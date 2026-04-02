@@ -1,6 +1,6 @@
 import { test } from 'vitest'
-import rule from './no-special-unicode.js'
-import { ruleTester } from '../utils/test-fixtures.js'
+import rule from './index.js'
+import { ruleTester } from '../../utils/test-fixtures.js'
 
 test('autofixes smart quotes safely', () => {
   ruleTester.run('no-special-unicode', rule, {
