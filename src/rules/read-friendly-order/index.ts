@@ -301,6 +301,7 @@ function collectHelperRuntimeDependencies(
   const deps = new Map<string, Set<string>>()
   for (const helper of helpers) {
     const statement = body[helper.index]
+    if (!statement) continue
     const names = collectRuntimeNamesInStatement(statement, refs, helperNames)
     names.delete(helper.name)
     deps.set(helper.name, names)
@@ -316,12 +317,9 @@ function collectEagerRootNames(
   const roots = new Set<string>()
 
   for (const ref of refs) {
-    if (isTypeReference(ref)) continue
-    if (!isReadReference(ref)) continue
-    const name = ref.identifier.name
-    if (!helperNames.has(name)) continue
+    if (!isRuntimeHelperReadReference(ref, helperNames)) continue
     if (!isEagerRefInTopLevelStatement(ref, body)) continue
-    roots.add(name)
+    roots.add(ref.identifier.name)
   }
 
   return roots
@@ -338,36 +336,28 @@ function findTopLevelStatementForRef(
   body: TopLevelNode[],
   ref: Scope.Reference,
 ): TopLevelNode | undefined {
-  const idRange = ref.identifier.range
-  if (!idRange) return undefined
-  return body.find((statement) => isRangeInsideStatement(idRange, statement))
+  return body.find((statement) => isReferenceInsideStatement(ref, statement))
 }
 
 function collectRuntimeNamesInStatement(
-  statement: TopLevelNode | undefined,
+  statement: TopLevelNode,
   refs: Scope.Reference[],
   helperNames: Set<string>,
 ): Set<string> {
   const names = new Set<string>()
-  const range = statement?.range
-  if (!range) return names
+  if (!statement.range) return names
 
   for (const ref of refs) {
-    if (isTypeReference(ref)) continue
-    if (!isReadReference(ref)) continue
-    const name = ref.identifier.name
-    if (!helperNames.has(name)) continue
-    if (!isRangeInsideStatement(ref.identifier.range, statement)) continue
-    names.add(name)
+    if (!isRuntimeHelperReadReference(ref, helperNames)) continue
+    if (!isReferenceInsideStatement(ref, statement)) continue
+    names.add(ref.identifier.name)
   }
 
   return names
 }
 
-function isRangeInsideStatement(
-  range: [number, number] | undefined,
-  statement: TopLevelNode,
-): boolean {
+function isReferenceInsideStatement(ref: Scope.Reference, statement: TopLevelNode): boolean {
+  const range = ref.identifier.range
   if (!range || !statement.range) return false
   return range[0] >= statement.range[0] && range[1] <= statement.range[1]
 }
@@ -392,6 +382,12 @@ function isTypeReference(ref: Scope.Reference): boolean {
 
 function isReadReference(ref: Scope.Reference): boolean {
   return typeof ref.isRead === 'function' ? ref.isRead() : true
+}
+
+function isRuntimeHelperReadReference(ref: Scope.Reference, helperNames: Set<string>): boolean {
+  if (isTypeReference(ref)) return false
+  if (!isReadReference(ref)) return false
+  return helperNames.has(ref.identifier.name)
 }
 
 function getSymbolName(statement: TopLevelNode): string {

@@ -104,6 +104,8 @@ const VALID_CASES = [
   },
 ]
 
+const EAGER_ENTRYPOINT = "if (import.meta.url === 'file:///tmp/run.js') main()"
+
 const EAGER_EVAL_VALID_CASES = [
   {
     code: [
@@ -143,7 +145,7 @@ const EAGER_EVAL_VALID_CASES = [
   },
   {
     code: [
-      "if (import.meta.url === 'file:///tmp/run.js') main()",
+      EAGER_ENTRYPOINT,
       '',
       "const BUMP_ARGS = ['dev', 'patch']",
       '',
@@ -156,7 +158,7 @@ const EAGER_EVAL_VALID_CASES = [
     code: [
       'const LIMIT = 3',
       '',
-      "if (import.meta.url === 'file:///tmp/run.js') main()",
+      EAGER_ENTRYPOINT,
       '',
       'function main() {',
       '  return run()',
