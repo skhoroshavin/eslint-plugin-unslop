@@ -6,7 +6,7 @@ import unslop from './dist/index.js'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'reports/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
