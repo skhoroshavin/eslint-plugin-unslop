@@ -107,10 +107,7 @@ function collectTopLevelEdges(
 }
 
 function isIdentityOrder(order: number[]): boolean {
-  for (const [index, value] of order.entries()) {
-    if (index !== value) return false
-  }
-  return true
+  return order.every((value, index) => index === value)
 }
 
 export function getTopLevelStatements(program: Program): TopLevelNode[] {
@@ -255,7 +252,8 @@ function canReachSelf(start: string, deps: Map<string, Set<string>>): boolean {
   const queue = [...(deps.get(start) ?? [])]
 
   while (queue.length > 0) {
-    const current = queue.shift()!
+    const current = queue.shift()
+    if (current === undefined) break
     if (current === start) return true
     if (visited.has(current)) continue
     visited.add(current)

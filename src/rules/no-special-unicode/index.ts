@@ -1,6 +1,9 @@
 import type { Rule } from 'eslint'
 import type { Literal, TemplateLiteral } from 'estree'
-import { createStringLiteralListener } from '../../utils/string-literal-listener.js'
+import {
+  createStringLiteralListener,
+  extractContentAndWrapper,
+} from '../../utils/string-literal-listener.js'
 
 export default {
   meta: {
@@ -72,7 +75,7 @@ const BANNED_CHARS = new Map(CHAR_RULES.map(({ char, name }) => [char, name]))
 const BANNED_CHARS_RE = new RegExp(CHAR_RULES.map(({ char }) => char).join('|'))
 
 function computeFixedText(text: string, node: Literal | TemplateLiteral): string | null {
-  const { content, wrapper } = extractContent(text, node)
+  const { content, wrapper } = extractContentAndWrapper(text, node)
   if (!content) return null
 
   const wrapperQuote = wrapper === '`' ? null : wrapper
@@ -104,23 +107,4 @@ function isUnsafeReplacement(wrapperQuote: string | null, replacement: string): 
   if (wrapperQuote === '"' && replacement.includes('"')) return true
   if (wrapperQuote === "'" && replacement.includes("'")) return true
   return false
-}
-
-function extractContent(
-  text: string,
-  node: Literal | TemplateLiteral,
-): { content: string | null; wrapper: string } {
-  if (node.type === 'Literal' && typeof node.value === 'string' && typeof node.raw === 'string') {
-    const quote = node.raw[0]
-    if (quote === '"' || quote === "'") {
-      return { content: node.raw.slice(1, -1), wrapper: quote }
-    }
-    return { content: null, wrapper: '' }
-  }
-
-  if (node.type === 'TemplateLiteral') {
-    return { content: text, wrapper: '`' }
-  }
-
-  return { content: null, wrapper: '' }
 }

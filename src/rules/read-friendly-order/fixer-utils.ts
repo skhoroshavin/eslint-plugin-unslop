@@ -39,6 +39,19 @@ export function createReplaceTextRangeFix(
   }
 }
 
+export function isSameIndexOrder<T extends { index: number }>(
+  original: T[],
+  candidate: T[],
+): boolean {
+  if (original.length !== candidate.length) return false
+
+  for (let i = 0; i < original.length; i += 1) {
+    if (original[i]?.index !== candidate[i]?.index) return false
+  }
+
+  return true
+}
+
 function consumeQueue(
   queue: number[],
   adjacency: Array<Set<number>>,

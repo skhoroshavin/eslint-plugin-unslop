@@ -207,7 +207,6 @@ function collectErrors(modules: Map<string, ModuleEntry>): Map<string, string[]>
   return errors
 }
 
-// Derive the entity identifier from a consumer path based on sharing mode
 function deriveEntity(consumerPath: string, mode: SharingMode): string {
   if (mode === 'file') {
     return consumerPath

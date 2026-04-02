@@ -3,6 +3,7 @@ import type { Rule } from 'eslint'
 import {
   createReplaceTextRangeFix,
   createSafeReorderFix,
+  isSameIndexOrder,
   stableTopologicalOrder,
 } from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from './index.js'
@@ -135,7 +136,7 @@ function buildClassFixRange(
   if (members.length < 2) return undefined
 
   const orderedMembers = getCanonicalClassMembers(members, context)
-  if (!orderedMembers || isSameMemberOrder(members, orderedMembers)) return undefined
+  if (!orderedMembers || isSameIndexOrder(members, orderedMembers)) return undefined
 
   const originalNodes = members.map((member) => member.node)
   const orderedNodes = orderedMembers.map((member) => member.node)
@@ -182,14 +183,6 @@ function collectOtherMemberEdges(
   }
 
   return edges
-}
-
-function isSameMemberOrder(original: ClassMemberEntry[], candidate: ClassMemberEntry[]): boolean {
-  if (original.length !== candidate.length) return false
-  for (let i = 0; i < original.length; i += 1) {
-    if (original[i]?.index !== candidate[i]?.index) return false
-  }
-  return true
 }
 
 function collectClassMembers(classNode: ClassNode): ClassMemberEntry[] {

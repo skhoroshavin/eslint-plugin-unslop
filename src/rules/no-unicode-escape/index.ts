@@ -1,6 +1,9 @@
 import type { Rule } from 'eslint'
 import type { Literal, TemplateLiteral } from 'estree'
-import { createStringLiteralListener } from '../../utils/string-literal-listener.js'
+import {
+  createStringLiteralListener,
+  extractContentAndWrapper,
+} from '../../utils/string-literal-listener.js'
 
 export default {
   meta: {
@@ -43,27 +46,6 @@ function computeReplacement(text: string, node: Literal | TemplateLiteral): stri
   const result = content.replace(UNICODE_ESCAPE_RE, toLiteralCharacter)
 
   return wrapper + result + wrapper
-}
-
-function extractContentAndWrapper(
-  text: string,
-  node: Literal | TemplateLiteral,
-): { content: string | null; wrapper: string } {
-  // For string literals, use node.raw directly to get the quoted content
-  if (node.type === 'Literal' && typeof node.value === 'string' && typeof node.raw === 'string') {
-    const quote = node.raw[0]
-    if (quote === '"' || quote === "'") {
-      return { content: node.raw.slice(1, -1), wrapper: quote }
-    }
-    return { content: null, wrapper: '' }
-  }
-
-  // For template literals, the text is already the raw content without outer backticks
-  if (node.type === 'TemplateLiteral') {
-    return { content: text, wrapper: '`' }
-  }
-
-  return { content: null, wrapper: '' }
 }
 
 function allEscapesSafe(content: string): boolean {

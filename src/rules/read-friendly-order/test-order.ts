@@ -1,6 +1,6 @@
 import type { CallExpression, ExpressionStatement, Program } from 'estree'
 import type { Rule } from 'eslint'
-import { createReplaceTextRangeFix, createSafeReorderFix } from './fixer-utils.js'
+import { createReplaceTextRangeFix, createSafeReorderFix, isSameIndexOrder } from './fixer-utils.js'
 import { getTopLevelStatements, type TopLevelNode } from './index.js'
 
 export function reportTestOrdering(program: Program, context: Rule.RuleContext): void {
@@ -21,7 +21,7 @@ function buildTestPhaseFixRange(
   if (entries.length < 2) return undefined
 
   const ordered = getCanonicalPhaseEntries(entries)
-  if (isSameOrder(entries, ordered)) return undefined
+  if (isSameIndexOrder(entries, ordered)) return undefined
 
   const originalNodes = entries.map((entry) => entry.node)
   const orderedNodes = ordered.map((entry) => entry.node)
@@ -33,14 +33,6 @@ function getCanonicalPhaseEntries(entries: TestPhaseEntry[]): TestPhaseEntry[] {
   const teardown = entries.filter((entry) => entry.kind === 'teardown')
   const tests = entries.filter((entry) => entry.kind === 'test')
   return [...setup, ...teardown, ...tests]
-}
-
-function isSameOrder(original: TestPhaseEntry[], candidate: TestPhaseEntry[]): boolean {
-  if (original.length !== candidate.length) return false
-  for (let i = 0; i < original.length; i += 1) {
-    if (original[i]?.index !== candidate[i]?.index) return false
-  }
-  return true
 }
 
 function collectTestPhaseEntries(program: Program): TestPhaseEntry[] {
@@ -62,14 +54,8 @@ function toTestPhaseEntry(statement: TopLevelNode, index: number): TestPhaseEntr
   }
 
   const rootName = getCallRootName(statement.expression)
-  if (!rootName) {
-    return undefined
-  }
-
-  const kind = classifyHookName(rootName)
-  if (!kind) {
-    return undefined
-  }
+  const kind = rootName ? classifyHookName(rootName) : undefined
+  if (!kind || !rootName) return undefined
 
   return { index, kind, hookName: rootName, node: statement }
 }
