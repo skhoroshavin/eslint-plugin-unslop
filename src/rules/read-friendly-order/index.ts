@@ -86,7 +86,13 @@ function buildTopLevelFixRange(input: TopLevelFixInput): [number, number, string
   const { body, helpers, refs, cyclicNames, eagerHelperNames, context } = input
   if (body.length < 2) return undefined
 
-  const edges = collectTopLevelEdges(body, helpers, refs, cyclicNames, eagerHelperNames)
+  const edges = collectTopLevelEdges({
+    body,
+    helpers,
+    refs,
+    cyclicNames,
+    eagerHelperNames,
+  })
   if (edges.length === 0) return undefined
 
   const order = stableTopologicalOrder(body.length, edges)
@@ -96,13 +102,8 @@ function buildTopLevelFixRange(input: TopLevelFixInput): [number, number, string
   return createSafeReorderFix(context.sourceCode, body, orderedBody)
 }
 
-function collectTopLevelEdges(
-  body: TopLevelNode[],
-  helpers: HelperDeclaration[],
-  refs: Scope.Reference[],
-  cyclicNames: Set<string>,
-  eagerHelperNames: Set<string>,
-): Array<[number, number]> {
+function collectTopLevelEdges(input: TopLevelEdgesInput): Array<[number, number]> {
+  const { body, helpers, refs, cyclicNames, eagerHelperNames } = input
   const edges: Array<[number, number]> = []
 
   for (const helper of helpers) {
@@ -376,18 +377,18 @@ function collectReachableNames(roots: Set<string>, deps: Map<string, Set<string>
   return reachable
 }
 
+function isRuntimeHelperReadReference(ref: Scope.Reference, helperNames: Set<string>): boolean {
+  if (isTypeReference(ref)) return false
+  if (!isReadReference(ref)) return false
+  return helperNames.has(ref.identifier.name)
+}
+
 function isTypeReference(ref: Scope.Reference): boolean {
   return 'isTypeReference' in ref && ref.isTypeReference === true
 }
 
 function isReadReference(ref: Scope.Reference): boolean {
   return typeof ref.isRead === 'function' ? ref.isRead() : true
-}
-
-function isRuntimeHelperReadReference(ref: Scope.Reference, helperNames: Set<string>): boolean {
-  if (isTypeReference(ref)) return false
-  if (!isReadReference(ref)) return false
-  return helperNames.has(ref.identifier.name)
 }
 
 function getSymbolName(statement: TopLevelNode): string {
@@ -419,6 +420,14 @@ interface TopLevelFixInput {
   cyclicNames: Set<string>
   eagerHelperNames: Set<string>
   context: Rule.RuleContext
+}
+
+interface TopLevelEdgesInput {
+  body: TopLevelNode[]
+  helpers: HelperDeclaration[]
+  refs: Scope.Reference[]
+  cyclicNames: Set<string>
+  eagerHelperNames: Set<string>
 }
 
 interface HelperDeclaration {
