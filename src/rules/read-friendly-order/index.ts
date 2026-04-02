@@ -52,11 +52,19 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
   const helpers = collectHelpers(body)
   const refs = collectReferences(context.sourceCode.scopeManager.globalScope)
   const cyclicNames = findCyclicHelperNames(body, helpers, refs)
-  const fixRange = buildTopLevelFixRange({ body, helpers, refs, cyclicNames, context })
+  const eagerHelperNames = findEagerHelperNames(body, helpers, refs)
+  const fixRange = buildTopLevelFixRange({
+    body,
+    helpers,
+    refs,
+    cyclicNames,
+    eagerHelperNames,
+    context,
+  })
 
   for (const helper of helpers) {
     if (cyclicNames.has(helper.name)) continue
-    if (hasEagerReference(body, helper, refs)) continue
+    if (eagerHelperNames.has(helper.name)) continue
 
     const consumer = findFirstConsumerEntry(body, helper, refs)?.statement
     if (!consumer) continue
@@ -75,10 +83,10 @@ function reportTopLevelOrdering(program: Program, context: Rule.RuleContext): vo
 }
 
 function buildTopLevelFixRange(input: TopLevelFixInput): [number, number, string] | undefined {
-  const { body, helpers, refs, cyclicNames, context } = input
+  const { body, helpers, refs, cyclicNames, eagerHelperNames, context } = input
   if (body.length < 2) return undefined
 
-  const edges = collectTopLevelEdges(body, helpers, refs, cyclicNames)
+  const edges = collectTopLevelEdges(body, helpers, refs, cyclicNames, eagerHelperNames)
   if (edges.length === 0) return undefined
 
   const order = stableTopologicalOrder(body.length, edges)
@@ -93,11 +101,12 @@ function collectTopLevelEdges(
   helpers: HelperDeclaration[],
   refs: Scope.Reference[],
   cyclicNames: Set<string>,
+  eagerHelperNames: Set<string>,
 ): Array<[number, number]> {
   const edges: Array<[number, number]> = []
 
   for (const helper of helpers) {
-    if (cyclicNames.has(helper.name) || hasEagerReference(body, helper, refs)) continue
+    if (cyclicNames.has(helper.name) || eagerHelperNames.has(helper.name)) continue
     const consumer = findFirstConsumerEntry(body, helper, refs)
     if (!consumer) continue
     edges.push([consumer.index, helper.index])
@@ -339,6 +348,7 @@ interface TopLevelFixInput {
   helpers: HelperDeclaration[]
   refs: Scope.Reference[]
   cyclicNames: Set<string>
+  eagerHelperNames: Set<string>
   context: Rule.RuleContext
 }
 
