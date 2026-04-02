@@ -2,11 +2,11 @@
 
 ### Requirement: Read-friendly-order exposes canonical autofix
 
-The `read-friendly-order` rule SHALL declare code autofix support and SHALL emit deterministic reorder fixes for all existing reordering diagnostics when a target region is fix-safe.
+The `read-friendly-order` rule SHALL declare code autofix support and SHALL emit deterministic reorder fixes for all existing reordering diagnostics when a target region is fix-safe and not excluded by eager runtime reachability.
 
 #### Scenario: Deterministic top-level reorder output
 
-- **WHEN** a file has reorderable top-level helper or constant declarations that violate existing `read-friendly-order` diagnostics and the region passes safety checks
+- **WHEN** a file has reorderable top-level helper or constant declarations that violate existing `read-friendly-order` diagnostics, the region passes safety checks, and the symbol is not eagerly reachable from module initialization
 - **THEN** the rule emits a canonical single-pass replacement for the region that resolves the reported ordering violations
 
 #### Scenario: Deterministic class-member reorder output
@@ -21,7 +21,7 @@ The `read-friendly-order` rule SHALL declare code autofix support and SHALL emit
 
 ### Requirement: Autofix is safety-guarded and non-destructive
 
-The rule MUST avoid applying reordering fixes when safe reconstruction cannot be guaranteed, and SHALL continue reporting diagnostics without a fix in those cases.
+The rule MUST avoid applying reordering fixes when safe reconstruction cannot be guaranteed, and SHALL continue reporting diagnostics without a fix in those cases, except for eager-excluded top-level symbols that SHALL be skipped entirely.
 
 #### Scenario: Ambiguous region does not receive autofix
 
@@ -32,6 +32,11 @@ The rule MUST avoid applying reordering fixes when safe reconstruction cannot be
 
 - **WHEN** helper or member dependency analysis identifies a cycle that prevents strict ordering
 - **THEN** the rule does not apply an arbitrary cycle-breaking reorder fix
+
+#### Scenario: Eager call-path dependency is excluded
+
+- **WHEN** a top-level helper or constant is used through a transitive call path rooted in eager module initialization code
+- **THEN** the rule emits no top-level ordering diagnostic and emits no reorder fix for that symbol
 
 ### Requirement: Autofix behavior is idempotent under repeated fixing
 
