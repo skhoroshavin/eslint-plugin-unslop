@@ -1,15 +1,20 @@
 {
-  "minLines": 6,
-  "languages": ["javascript", "typescript"],
-  "reporters": ["json", "html"],
-  "output": "reports/jscpd",
+  "mode": "mild",
+  "threshold": 0,
+  "reporters": ["console"],
+  "minTokens": 60,
+  "minLines": 5,
+  "format": ["typescript"],
+  "pattern": "src/**/*.ts",
   "ignore": [
     "**/node_modules/**",
     "**/dist/**",
-    "**/.opencode/**",
-    "reports/**",
-    "**/__fixtures__/**",
-    "**/fixtures/**",
-    "**/*.d.ts"
-  ]
+    "**/out/**",
+    "**/*.test.ts",
+    "**/*.test-suite.ts",
+    "**/*.integration-test.ts"
+  ],
+  "gitignore": true,
+  "absolute": false,
+  "silent": false
 }

@@ -1,79 +1,104 @@
 import type { Rule } from 'eslint'
-import type { Literal, TemplateLiteral } from 'estree'
-import {
-  createStringLiteralListener,
-  extractContentAndWrapper,
-} from '../../utils/string-literal-listener.js'
+import type { Node } from 'estree'
 
-export default {
+const rule: Rule.RuleModule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: 'Prefer literal unicode characters over \\uXXXX escape sequences',
+      description: 'Disallow Unicode escape sequences when literal characters can be used',
       recommended: true,
     },
     fixable: 'code',
     schema: [],
     messages: {
-      preferLiteral: 'Use the actual character instead of a \\uXXXX escape sequence.',
+      preferLiteral: 'Use the literal character instead of the Unicode escape sequence.',
     },
   },
-  create(context: Rule.RuleContext) {
-    return createStringLiteralListener(true, (node, text) => {
-      if (UNICODE_ESCAPE_RE.test(text)) {
-        context.report({
-          node,
-          messageId: 'preferLiteral',
-          fix(fixer) {
-            const replacement = computeReplacement(text, node)
-            if (!replacement) return null
-            return fixer.replaceText(node, replacement)
-          },
-        })
-      }
-    })
+  create(context) {
+    return {
+      Literal(node) {
+        if (node.type !== 'Literal') return
+        if (typeof node.value !== 'string') return
+        const raw = context.sourceCode.getText(node)
+        ESCAPE_RE.lastIndex = 0
+        if (!ESCAPE_RE.test(raw)) return
+
+        const wrapper = raw[0]
+        const fixed = tryFix(raw, wrapper)
+        reportIfNeeded(context, node, fixed)
+      },
+      TemplateLiteral(node) {
+        for (const quasi of node.quasis) {
+          const raw = context.sourceCode.getText(quasi)
+          ESCAPE_RE.lastIndex = 0
+          if (!ESCAPE_RE.test(raw)) continue
+
+          const fixed = tryFix(raw, '`')
+          reportIfNeeded(context, quasi, fixed)
+        }
+      },
+    }
   },
-} satisfies Rule.RuleModule
-
-function computeReplacement(text: string, node: Literal | TemplateLiteral): string | null {
-  const { content, wrapper } = extractContentAndWrapper(text, node)
-  if (!content) return null
-
-  // Check if all escapes are safe (all-or-nothing strategy)
-  if (!allEscapesSafe(content)) return null
-
-  // All escapes are safe, replace them all
-  const result = content.replace(UNICODE_ESCAPE_RE, toLiteralCharacter)
-
-  return wrapper + result + wrapper
 }
 
-function allEscapesSafe(content: string): boolean {
-  const escapes = content.match(UNICODE_ESCAPE_RE)
-  if (!escapes) return false
+function reportIfNeeded(context: Rule.RuleContext, node: Node, fixed: string | null): void {
+  const range = node.range
+  context.report({
+    node,
+    messageId: 'preferLiteral',
+    fix: fixed && range ? (fixer) => fixer.replaceTextRange(range, fixed) : null,
+  })
+}
 
-  for (const escape of escapes) {
-    const code = parseEscapeCode(escape)
-    if (isUnsafeChar(code)) return false
+function tryFix(raw: string, wrapper: string): string | null {
+  ESCAPE_RE.lastIndex = 0
+  const matches: EscapeMatch[] = []
+  let m: RegExpExecArray | null
+  while ((m = ESCAPE_RE.exec(raw)) !== null) {
+    matches.push({
+      index: m.index,
+      len: m[0].length,
+      cp: parseInt(m[1], 16),
+    })
   }
+  if (matches.length === 0) return null
+  if (matches.some((e) => isUnsafe(e.cp, wrapper))) return null
 
-  return true
+  return replaceMatches(raw, matches)
 }
 
-function toLiteralCharacter(escape: string): string {
-  return String.fromCharCode(parseEscapeCode(escape))
+function replaceMatches(raw: string, matches: EscapeMatch[]): string {
+  let result = raw
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const entry = matches[i]
+    result =
+      result.slice(0, entry.index) +
+      String.fromCodePoint(entry.cp) +
+      result.slice(entry.index + entry.len)
+  }
+  return result
 }
 
-function parseEscapeCode(escape: string): number {
-  return Number.parseInt(escape.slice(2), 16)
+interface EscapeMatch {
+  index: number
+  len: number
+  cp: number
 }
 
-function isUnsafeChar(code: number): boolean {
-  // Control characters (0x00-0x1F)
-  if (code <= 0x1f) return true
-  // Quote delimiters and backslash
-  if (code === 0x22 || code === 0x27 || code === 0x5c || code === 0x60) return true
-  return false
+const ESCAPE_RE = /\\u([0-9A-Fa-f]{4})/g
+
+const ALWAYS_UNSAFE = new Set([0x5c])
+
+const WRAPPER_UNSAFE: Record<string, number> = {
+  '"': 0x22,
+  "'": 0x27,
+  '`': 0x60,
 }
 
-const UNICODE_ESCAPE_RE = /\\u[0-9a-fA-F]{4}/g
+function isUnsafe(codePoint: number, wrapper: string): boolean {
+  if (codePoint < 0x20) return true
+  if (ALWAYS_UNSAFE.has(codePoint)) return true
+  return codePoint === WRAPPER_UNSAFE[wrapper]
+}
+
+export default rule
