@@ -2,45 +2,42 @@
 
 Overview
 
-- Use jscpd (https://github.com/kucherenko/jscpd) to detect copy/paste clones across the repository's JavaScript and TypeScript sources. Provide a stable configuration file, `package.json` scripts for local use, and a GitHub Actions job to run on pull requests and main.
+- Use jscpd (https://github.com/kucherenko/jscpd) to detect copy/paste clones across repository source files. Provide a stable configuration file and run it from the existing `verify` script.
 
 Components
 
-- `.jscpd.json` - repository configuration (excludes, minLines, reporters, output dir)
-- `package.json` - script `check:dup` that runs jscpd with the repo config and writes reports to `reports/jscpd`
-- `ci` - GitHub Actions workflow `jscpd.yml` that runs `npm ci` and `npm run check:dup`, then uploads `reports/jscpd` as workflow artifacts and optionally posts a PR comment or annotation (initial iteration just uploads artifacts).
+- `.jscpd.json` - repository configuration (mode, thresholds, scope, and ignore rules)
+- `package.json` - `verify` script includes `jscpd`
 
 Configuration details
 
-- minLines: 6 (adjustable after observing noise)
-- languages: javascript, typescript
-- excludes: `node_modules`, `dist`, `reports`, `.opencode`, test fixtures directory patterns (e.g., `**/__fixtures__/**`, `**/fixtures/**`), `**/*.d.ts`
-- reporters: `json`, `html`
-- output: `reports/jscpd`
+- mode: `mild`
+- threshold: `0`
+- reporters: `console`
+- minTokens: `60`
+- minLines: `5`
+- format: `typescript`
+- pattern: `src/**/*.ts`
+- ignores: `node_modules`, `dist`, `out`, test files (`*.test.ts`, `*.test-suite.ts`, `*.integration-test.ts`)
+- gitignore-aware: `true`
+- absolute paths in output: `false`
 
 CI behavior
 
-- Job runs on `pull_request` and `push` to main (or default branch).
-- Steps:
-  1. Checkout
-  2. Setup Node 18
-  3. Install dev dependencies (`npm ci`)
-  4. Run `npm run check:dup`
-  5. Upload `reports/jscpd` as artifact for review
-- For the first iteration the job will not fail PRs (use `continue-on-error: true`). After tuning, flip to fail based on thresholds and/or script exit code.
+- Duplication detection runs where `npm run verify` runs.
+- No additional workflow is required for jscpd.
 
 Reporting & triage
 
-- `reports/jscpd/report.html` is the human‑facing artifact reviewers can open.
-- `reports/jscpd/report.json` can be consumed by automation that posts PR comments or generates annotations; that is a later enhancement.
+- jscpd writes findings to console output during `verify`.
+- If machine-readable reports become necessary later, reporters can be expanded in `.jscpd.json`.
 
 Threshold strategy
 
-- Start: do not fail PRs automatically; just report.
-- Tune `minLines` and exclusions until noise is low.
-- Enforce: fail only when clone size >= 15 lines or overall duplication percent > 2% (team can adjust).
+- Start with strict detection (`threshold: 0`) while scoping checks to `src/**/*.ts` and excluding test files.
+- Tune `minTokens`, `minLines`, and ignore patterns until noise is low.
 
 Extensibility
 
-- Replace report upload with PR annotation using a small Node script or GitHub Action that parses `report.json` and uses `gh` to comment/annotate.
+- Add a dedicated script or workflow only if the team later wants PR annotations.
 - If the team wants historical trending, add SonarCloud and import jscpd results or let Sonar compute duplication metrics.

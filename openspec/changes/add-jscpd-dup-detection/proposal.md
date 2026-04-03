@@ -2,18 +2,18 @@
 
 Summary
 
-- Add jscpd (JavaScript Copy/Paste Detector) to the repository and CI pipeline to detect code duplication in JS/TS sources. The initial integration will provide a reproducible local CLI command, a `package.json` script, a canonical `.jscpd.json` configuration, and a GitHub Actions job that produces machine-readable reports and an HTML artifact for human review.
+- Add jscpd (JavaScript Copy/Paste Detector) to the repository verification flow to detect code duplication in source files. The integration provides a canonical `.jscpd.json` configuration and runs jscpd from `npm run verify` with console output.
 
 Why
 
 - Duplication increases maintenance cost and hides bugs; an automated detector prevents regressions and surfaces existing hotspots before they grow.
-- jscpd is lightweight, popular in the JS/TS ecosystem, supports multiple reporters (json, html), and is easy to run locally or in CI.
+- jscpd is lightweight, popular in the JS/TS ecosystem, and easy to run locally or in CI.
 
 Goals
 
 - Provide a low‑friction developer experience for running duplication checks locally.
-- Run duplication detection in CI for pull requests and surface results as artifacts/PR comments.
-- Fail or warn CI based on tuned thresholds so we avoid noisy failures.
+- Run duplication detection in CI through the existing `verify` pipeline.
+- Keep output focused and actionable while avoiding generated report artifacts in the repo.
 
 Non‑Goals
 
@@ -22,19 +22,19 @@ Non‑Goals
 
 Success criteria
 
-- `npm run check:dup` runs locally and produces `reports/jscpd/report.json` and `reports/jscpd/report.html`.
-- CI runs jscpd on PRs and uploads HTML/JSON artifacts.
+- `npm run verify` runs jscpd as part of the standard verification pipeline.
+- jscpd uses console reporting only and does not generate tracked report artifacts.
 - Configured thresholds produce low false positives after one tuning pass (team agreement).
 
 Rollout plan
 
-1. Add `jscpd` as a devDependency and introduce `npm run check:dup` (non‑blocking by default).
-2. Add a GitHub Actions job that runs jscpd and uploads reports; start with `continue-on-error: true` to gather data.
-3. After 1–2 weeks of data and tuning, switch CI policy to fail PRs for clones above configured thresholds.
+1. Add `jscpd` as a devDependency with a repo-level `.jscpd.json` configuration.
+2. Integrate `jscpd` into the existing `verify` script so duplication checks run in CI without adding a new workflow.
+3. After 1–2 weeks of data and tuning, adjust thresholds/exclusions based on observed noise.
 
 Risks and mitigation
 
-- Noise from test fixtures or generated files — mitigate by excluding those paths in `.jscpd.json`.
+- Noise from test files or generated files — mitigate by excluding those paths in `.jscpd.json`.
 - Legit duplicate boilerplate across small rule modules — mitigate by raising `minLines` (start at 6) and iteratively tuning.
 
 Alternatives considered
@@ -44,9 +44,8 @@ Alternatives considered
 
 Files to add
 
-- `package.json` script: `check:dup`
+- `package.json` update: include `jscpd` in `verify`
 - `.jscpd.json` (repo config)
-- `.github/workflows/jscpd.yml` (CI job)
 
 Location
 
