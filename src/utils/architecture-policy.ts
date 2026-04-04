@@ -91,7 +91,19 @@ export function matchFileToArchitectureModule(
   if (candidatePath === undefined) return undefined
   const segments = splitPathSegments(candidatePath)
   const matches = collectModuleMatches(segments, policy.modules)
-  return pickBestMatch(matches)
+  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+}
+
+function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
+  const segments = splitPathSegments(relativePath)
+  const dirSegments = segments.slice(0, -1)
+  const key = dirSegments.length > 0 ? dirSegments.join('/') : (segments[0] ?? '.')
+  return {
+    matcher: key,
+    instance: key,
+    policy: { imports: [], exports: [], shared: false },
+    order: 0,
+  }
 }
 
 interface ArchitecturePolicy {
@@ -113,7 +125,7 @@ function collectModuleMatches(
 ): MatchedArchitectureModule[] {
   const matches: MatchedArchitectureModule[] = []
   for (const module of modules) {
-    const matched = matchModuleAtAnyOffset(segments, module)
+    const matched = matchModuleAtOffset0(segments, module)
     if (matched !== undefined) {
       matches.push(matched)
     }
@@ -121,24 +133,19 @@ function collectModuleMatches(
   return matches
 }
 
-function matchModuleAtAnyOffset(
+function matchModuleAtOffset0(
   segments: string[],
   module: ArchitectureModuleDefinition,
 ): MatchedArchitectureModule | undefined {
   const matcherSegments = splitPathSegments(module.matcher)
-  for (let start = 0; start < segments.length; start++) {
-    const instance = matchAtOffset(segments, matcherSegments, start)
-    if (instance !== undefined) {
-      return {
-        matcher: module.matcher,
-        instance,
-        policy: module.policy,
-        order: module.order,
-        offset: start,
-      }
-    }
+  const instance = matchAtOffset(segments, matcherSegments, 0)
+  if (instance === undefined) return undefined
+  return {
+    matcher: module.matcher,
+    instance,
+    policy: module.policy,
+    order: module.order,
   }
-  return undefined
 }
 
 interface ArchitectureModuleDefinition {
@@ -180,9 +187,6 @@ function pickBestMatch(
 }
 
 function compareMatches(left: MatchedArchitectureModule, right: MatchedArchitectureModule): number {
-  if (left.offset !== right.offset) {
-    return left.offset - right.offset
-  }
   const leftWildcards = countWildcards(left.matcher)
   const rightWildcards = countWildcards(right.matcher)
   if (leftWildcards !== rightWildcards) {
@@ -199,7 +203,6 @@ interface MatchedArchitectureModule {
   instance: string
   policy: ArchitectureModulePolicy
   order: number
-  offset: number
 }
 
 function countWildcards(value: string): number {

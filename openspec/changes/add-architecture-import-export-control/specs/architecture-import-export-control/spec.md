@@ -31,7 +31,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 #### Scenario: Unmatched module edge
 
 - **WHEN** either importer file or import target file does not match any architecture module key
-- **THEN** `unslop/import-control` MUST report an error
+- **THEN** `unslop/import-control` MUST treat it as an anonymous module keyed by its directory with an empty `imports` policy, and apply normal boundary checks against that default
 
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 

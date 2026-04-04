@@ -53,8 +53,6 @@ export default [
             imports: ['utils', 'utils/test-fixtures'],
             exports: ['^default$'],
           },
-          'utils/test-fixtures': {},
-          utils: {},
         },
       },
     },

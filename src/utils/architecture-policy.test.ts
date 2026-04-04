@@ -3,6 +3,7 @@ import { matchFileToArchitectureModule, normalizePath } from './architecture-pol
 
 test('prefers exact matcher over wildcard matcher', () => {
   const policy = {
+    sourceRoot: 'project',
     modules: [
       { matcher: 'repository/*', order: 0, policy: { imports: [], exports: [], shared: false } },
       {
@@ -22,6 +23,7 @@ test('prefers exact matcher over wildcard matcher', () => {
 
 test('supports wildcard instance matching', () => {
   const policy = {
+    sourceRoot: 'project',
     modules: [
       { matcher: 'models/*', order: 0, policy: { imports: [], exports: [], shared: false } },
     ],

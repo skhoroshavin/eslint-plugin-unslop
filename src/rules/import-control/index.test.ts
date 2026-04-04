@@ -51,34 +51,6 @@ test('rejects imports to non-entrypoint files across modules', () => {
   })
 })
 
-test('rejects missing architecture mapping for importer', () => {
-  ruleTester.run('import-control', rule, {
-    valid: [],
-    invalid: [
-      {
-        filename: fixture.filePath('src/other/stray.ts'),
-        code: "import { UserModel } from '../models/user/index.ts'",
-        settings: baseSettings,
-        errors: [{ messageId: 'missingArchitecture' }],
-      },
-    ],
-  })
-})
-
-test('rejects missing architecture mapping for importee', () => {
-  ruleTester.run('import-control', rule, {
-    valid: [],
-    invalid: [
-      {
-        filename: fixture.filePath('src/repository/user/service.ts'),
-        code: "import { anything } from '../../other/stray.ts'",
-        settings: baseSettings,
-        errors: [{ messageId: 'missingArchitecture' }],
-      },
-    ],
-  })
-})
-
 test('enforces shallow same-module relative depth', () => {
   ruleTester.run('import-control', rule, {
     valid: [
@@ -122,6 +94,5 @@ const fixture = new ProjectFixture({
     { path: 'src/repository/user/helpers/internal/index.ts' },
     { path: 'src/models/user/index.ts' },
     { path: 'src/models/user/internal.ts' },
-    { path: 'src/other/stray.ts' },
   ],
 })

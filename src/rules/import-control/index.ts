@@ -18,8 +18,6 @@ const rule: Rule.RuleModule = {
     },
     schema: [],
     messages: {
-      missingArchitecture:
-        'Import denied because {{side}} does not match settings.unslop.architecture.',
       notAllowed: 'Import denied: module {{from}} cannot import module {{to}}.',
       nonEntrypoint: 'Import denied: cross-module imports must target index.ts or types.ts.',
       tooDeep: 'Import denied: same-module relative imports can only go one level deeper.',
@@ -55,18 +53,14 @@ function checkDeclaration(
   const specifier = getSpecifier(node)
   if (specifier === undefined) return
 
-  const importer = getImporter(context, node, filename, policy)
-  if (importer === undefined) {
-    return
-  }
+  const importer = getImporter(filename, policy)
+  if (importer === undefined) return
 
   const targetFile = getTargetFile(filename, policy.sourceRoot, specifier)
   if (targetFile === undefined) return
 
-  const importee = getImportee(context, node, targetFile, policy)
-  if (importee === undefined) {
-    return
-  }
+  const importee = getImportee(targetFile, policy)
+  if (importee === undefined) return
 
   checkModuleEdge({ context, node, specifier, importer, importee, targetFile })
 }
@@ -80,15 +74,10 @@ function getSpecifier(
 }
 
 function getImporter(
-  context: Rule.RuleContext,
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   filename: string,
   policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
 ) {
-  const importer = matchFileToArchitectureModule(filename, policy)
-  if (importer !== undefined) return importer
-  reportMissingModule(context, node, 'importer')
-  return undefined
+  return matchFileToArchitectureModule(filename, policy)
 }
 
 function getTargetFile(
@@ -100,15 +89,10 @@ function getTargetFile(
 }
 
 function getImportee(
-  context: Rule.RuleContext,
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   targetFile: string,
   policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
 ) {
-  const importee = matchFileToArchitectureModule(targetFile, policy)
-  if (importee !== undefined) return importee
-  reportMissingModule(context, node, 'importee')
-  return undefined
+  return matchFileToArchitectureModule(targetFile, policy)
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
@@ -138,14 +122,6 @@ interface EdgeCheckOptions {
   importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
   importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
   targetFile: string
-}
-
-function reportMissingModule(
-  context: Rule.RuleContext,
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  side: string,
-): void {
-  context.report({ node, messageId: 'missingArchitecture', data: { side } })
 }
 
 function reportDeepRelativeImport(
