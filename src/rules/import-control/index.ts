@@ -7,7 +7,7 @@ import {
   matchFileToArchitectureModule,
   readArchitecturePolicy,
   resolveImportTarget,
-} from '../../utils/architecture-policy.js'
+} from '../../utils/index.js'
 
 const rule: Rule.RuleModule = {
   meta: {

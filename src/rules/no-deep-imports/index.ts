@@ -4,6 +4,7 @@ import type { ImportDeclaration } from 'estree'
 const rule: Rule.RuleModule = {
   meta: {
     type: 'suggestion',
+    deprecated: true,
     docs: {
       description:
         'Disallow imports that reach too deep into a folder (deprecated: use import-control)',

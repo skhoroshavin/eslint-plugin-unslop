@@ -87,13 +87,13 @@ const arrow = '→'
 
 ### `unslop/import-control`
 
-Enforces architecture boundaries from a shared policy in `settings.unslop.architecture`.
+Think of this as customs control for your modules — you declare which modules are allowed to import from which, and anything undeclared gets turned away at the border.
 
-This rule is deny-by-default for cross-module imports and also enforces:
+The rule reads from a shared policy in `settings.unslop.architecture`. It's deny-by-default for cross-module imports, which means forgetting to declare a dependency is a loud error rather than a silent free-for-all. It also enforces:
 
-- cross-module imports must target `index.ts` or `types.ts`
-- same-module relative imports can only go one level deeper
-- unmatched modules are denied (fail-closed)
+- cross-module imports must arrive through the public gate (`index.ts` or `types.ts`)
+- same-module relative imports can only go one level deeper — no tunnelling into internals
+- files that don't match any declared module are denied (fail-closed, not fail-silently)
 
 #### Configuration
 
@@ -131,13 +131,13 @@ export default [
 
 ### `unslop/export-control`
 
-Validates producer-side exports from module entrypoints.
+The customs declaration form for the other direction: what are you actually exporting from your module's public entrypoints?
 
-When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` and `types.ts` must match at least one pattern. Modules without `exports` are permissive by default.
+When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern — otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually.
 
 ### `unslop/no-deep-imports` (Deprecated)
 
-Use `unslop/import-control` instead.
+Use `unslop/import-control` instead — it does everything this rule does and more, with an explicit architecture policy behind it.
 
 Forbids importing more than one level deeper than the current file within the same top-level folder. If `features/auth/login.ts` imports from `features/auth/validators/internal/format.ts`, that's reaching too deep into implementation details. This rule nudges you toward flatter structures and proper module boundaries.
 

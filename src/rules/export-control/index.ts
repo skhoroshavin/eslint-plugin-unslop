@@ -10,7 +10,7 @@ import {
   isPublicEntrypoint,
   matchFileToArchitectureModule,
   readArchitecturePolicy,
-} from '../../utils/architecture-policy.js'
+} from '../../utils/index.js'
 
 const rule: Rule.RuleModule = {
   meta: {

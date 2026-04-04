@@ -21,7 +21,6 @@ export default [
       'max-params': ['error', { max: 4 }],
       'max-lines-per-function': ['error', { max: 50 }],
       'max-lines': ['error', { max: 600 }],
-      'unslop/no-deep-imports': ['error', { sourceRoot: 'src' }],
       'unslop/read-friendly-order': ['error'],
       'no-restricted-syntax': [
         'error',
@@ -39,7 +38,8 @@ export default [
     },
   },
   {
-    files: ['src/rules/index.ts'],
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/*.test.ts', 'src/index.ts'],
     settings: {
       unslop: {
         sourceRoot: 'src',

@@ -65,6 +65,20 @@ test('rejects missing architecture mapping for importer', () => {
   })
 })
 
+test('rejects missing architecture mapping for importee', () => {
+  ruleTester.run('import-control', rule, {
+    valid: [],
+    invalid: [
+      {
+        filename: fixture.filePath('src/repository/user/service.ts'),
+        code: "import { anything } from '../../other/stray.ts'",
+        settings: baseSettings,
+        errors: [{ messageId: 'missingArchitecture' }],
+      },
+    ],
+  })
+})
+
 test('enforces shallow same-module relative depth', () => {
   ruleTester.run('import-control', rule, {
     valid: [
