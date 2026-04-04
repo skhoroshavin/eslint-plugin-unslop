@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, test } from 'vitest'
 import rule from './index.js'
-import { ProjectFixture, ruleTester } from '../../utils/test-fixtures.js'
+import { ProjectFixture, ruleTester } from '../../utils/test-fixtures/index.js'
 
 beforeEach(() => {
   fixture.init()

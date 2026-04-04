@@ -39,21 +39,22 @@ export default [
   },
   {
     files: ['src/**/*.ts'],
-    ignores: ['src/**/*.test.ts', 'src/index.ts'],
     settings: {
       unslop: {
         sourceRoot: 'src',
         architecture: {
+          'index.ts': {
+            imports: ['rules/index.ts'],
+          },
           'rules/index.ts': {
             imports: ['rules/*'],
           },
           'rules/*': {
-            imports: ['utils'],
+            imports: ['utils', 'utils/test-fixtures'],
             exports: ['^default$'],
           },
-          utils: {
-            imports: [],
-          },
+          'utils/test-fixtures': {},
+          utils: {},
         },
       },
     },

@@ -134,6 +134,7 @@ function matchModuleAtAnyOffset(
         instance,
         policy: module.policy,
         order: module.order,
+        offset: start,
       }
     }
   }
@@ -179,6 +180,9 @@ function pickBestMatch(
 }
 
 function compareMatches(left: MatchedArchitectureModule, right: MatchedArchitectureModule): number {
+  if (left.offset !== right.offset) {
+    return left.offset - right.offset
+  }
   const leftWildcards = countWildcards(left.matcher)
   const rightWildcards = countWildcards(right.matcher)
   if (leftWildcards !== rightWildcards) {
@@ -195,6 +199,7 @@ interface MatchedArchitectureModule {
   instance: string
   policy: ArchitectureModulePolicy
   order: number
+  offset: number
 }
 
 function countWildcards(value: string): number {

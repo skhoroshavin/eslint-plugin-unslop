@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import rule from './index.js'
-import { ruleTester } from '../../utils/test-fixtures.js'
+import { ruleTester } from '../../utils/test-fixtures/index.js'
 
 test('does not report when module has no exports policy', () => {
   ruleTester.run('export-control', rule, {

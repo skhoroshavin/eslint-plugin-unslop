@@ -322,6 +322,58 @@ Yes, a fair amount of this was vibe-coded with LLM assistance — which is fitti
 
 The project also dogfoods itself: `eslint-plugin-unslop` is linted using `eslint-plugin-unslop`.
 
+## Maintainer: Main Branch Protection
+
+This repository treats `main` as a protected branch with pull-request-only merges.
+
+Baseline policy:
+
+- Require pull requests before merge
+- Require at least 1 approving review
+- Dismiss stale approvals when new commits are pushed
+- Require branch to be up to date before merge
+- Require status check: `PR Gate`
+- Apply restrictions to admins too (`enforce_admins`)
+
+The required check is produced by `.github/workflows/test.yml` (workflow/job name: `PR Gate`) and runs:
+
+1. `npm run verify`
+2. `npm run test`
+
+### Safe Workflow Renames
+
+If you rename the workflow or job that produces `PR Gate`, update branch protection required checks immediately to match the new check context.
+
+Recommended update command:
+
+```bash
+gh api -X PUT repos/skhoroshavin/eslint-plugin-unslop/branches/main/protection \
+  -H "Accept: application/vnd.github+json" \
+  -F 'required_status_checks[strict]=true' \
+  -F 'required_status_checks[contexts][]=PR Gate' \
+  -F 'enforce_admins=true' \
+  -F 'required_pull_request_reviews[dismiss_stale_reviews]=true' \
+  -F 'required_pull_request_reviews[require_code_owner_reviews]=false' \
+  -F 'required_pull_request_reviews[required_approving_review_count]=1' \
+  -F 'restrictions=null'
+```
+
+### Branch Protection Audit
+
+Run these checks periodically:
+
+```bash
+gh api repos/skhoroshavin/eslint-plugin-unslop/branches/main/protection
+gh run list --workflow "PR Gate" --limit 5
+```
+
+Expected audit outcomes:
+
+- `required_status_checks.contexts` includes `PR Gate`
+- `required_pull_request_reviews.required_approving_review_count` is `1` or greater
+- `required_pull_request_reviews.dismiss_stale_reviews` is `true`
+- `enforce_admins.enabled` is `true`
+
 ## Contributing
 
 See [AGENTS.md](./AGENTS.md) for development setup and guidelines.
