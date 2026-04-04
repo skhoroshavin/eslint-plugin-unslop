@@ -5,8 +5,9 @@ const rule: Rule.RuleModule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: 'Disallow imports that reach too deep into a folder',
-      recommended: true,
+      description:
+        'Disallow imports that reach too deep into a folder (deprecated: use import-control)',
+      recommended: false,
     },
     schema: [
       {

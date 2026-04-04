@@ -19,7 +19,6 @@ const recommended: Linter.Config = {
   rules: {
     'unslop/no-special-unicode': 'error',
     'unslop/no-unicode-escape': 'error',
-    'unslop/no-deep-imports': 'error',
   },
 }
 

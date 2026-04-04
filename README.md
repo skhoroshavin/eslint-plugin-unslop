@@ -12,7 +12,7 @@ npm install --save-dev eslint-plugin-unslop
 
 ## Quick Start
 
-The recommended config enables the three most universal rules out of the box:
+The recommended config enables the two most universal rules out of the box:
 
 ```js
 // eslint.config.mjs
@@ -27,7 +27,6 @@ This turns on:
 | --------------------------- | -------- | ------------------------------------------------------------------- |
 | `unslop/no-special-unicode` | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
 | `unslop/no-unicode-escape`  | error    | Prefers `"©"` over `"\u00A9"`                                       |
-| `unslop/no-deep-imports`    | error    | Prevents importing too deep within the same top-level folder        |
 
 The remaining rules need explicit configuration:
 
@@ -86,9 +85,59 @@ const copyright = '© 2025'
 const arrow = '→'
 ```
 
-### `unslop/no-deep-imports`
+### `unslop/import-control`
 
-**Recommended**
+Enforces architecture boundaries from a shared policy in `settings.unslop.architecture`.
+
+This rule is deny-by-default for cross-module imports and also enforces:
+
+- cross-module imports must target `index.ts` or `types.ts`
+- same-module relative imports can only go one level deeper
+- unmatched modules are denied (fail-closed)
+
+#### Configuration
+
+```js
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+
+export default [
+  {
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          utils: { shared: true },
+          'repository/*': {
+            imports: ['utils', 'models/*'],
+            exports: ['^create\\w+Repo$', '^Repository[A-Z]\\w+$'],
+          },
+          'models/*': {
+            imports: ['utils'],
+          },
+          app: {
+            imports: ['*'],
+          },
+        },
+      },
+    },
+    rules: {
+      'unslop/import-control': 'error',
+      'unslop/export-control': 'error',
+    },
+  },
+]
+```
+
+### `unslop/export-control`
+
+Validates producer-side exports from module entrypoints.
+
+When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` and `types.ts` must match at least one pattern. Modules without `exports` are permissive by default.
+
+### `unslop/no-deep-imports` (Deprecated)
+
+Use `unslop/import-control` instead.
 
 Forbids importing more than one level deeper than the current file within the same top-level folder. If `features/auth/login.ts` imports from `features/auth/validators/internal/format.ts`, that's reaching too deep into implementation details. This rule nudges you toward flatter structures and proper module boundaries.
 

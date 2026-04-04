@@ -33,21 +33,33 @@ export default [
     },
   },
   {
-    files: ['src/**/*.ts'],
-    languageOptions: {
-      parserOptions: {
-        project: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
-      'unslop/no-false-sharing': ['error', { dirs: [{ path: 'src/utils', mode: 'dir' }] }],
-    },
-  },
-  {
     files: ['src/**/*.test.ts'],
     rules: {
       complexity: ['error', { max: 1 }],
+    },
+  },
+  {
+    files: ['src/rules/index.ts'],
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          'rules/index.ts': {
+            imports: ['rules/*'],
+          },
+          'rules/*': {
+            imports: ['utils'],
+            exports: ['^default$'],
+          },
+          utils: {
+            imports: [],
+          },
+        },
+      },
+    },
+    rules: {
+      'unslop/import-control': 'error',
+      'unslop/export-control': 'error',
     },
   },
 ]
