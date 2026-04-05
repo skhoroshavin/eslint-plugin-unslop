@@ -1,5 +1,6 @@
 import type { Rule } from 'eslint'
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
+import node_path from 'node:path'
 import {
   isPublicEntrypoint,
   matchFileToArchitectureModule,
@@ -21,7 +22,7 @@ const rule: Rule.RuleModule = {
       nonEntrypoint: 'Import denied: cross-module imports must target index.ts or types.ts.',
       namespaceLocalForbidden:
         'Import denied: local cross-module namespace imports are not allowed.',
-      tooDeep: 'Import denied: same-module relative imports can only go one level deeper.',
+      tooDeep: 'Import denied: same-module imports can only go one level deeper.',
     },
   },
   create(context) {
@@ -63,7 +64,15 @@ function checkDeclaration(
   const importee = getImportee(targetFile, policy)
   if (importee === undefined) return
 
-  checkModuleEdge({ context, node, specifier, importer, importee, targetFile })
+  checkModuleEdge({
+    context,
+    node,
+    specifier,
+    importerFile: filename,
+    importer,
+    importee,
+    targetFile,
+  })
 }
 
 function getSpecifier(
@@ -98,9 +107,9 @@ function getImportee(
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
-  const { context, node, specifier, importer, importee, targetFile } = options
+  const { context, node, specifier, importer, importee, targetFile, importerFile } = options
   if (importer.instance === importee.instance) {
-    reportDeepRelativeImport(context, node, specifier)
+    reportDeepSameModuleImport(context, node, importerFile, targetFile)
     return
   }
 
@@ -141,18 +150,34 @@ interface EdgeCheckOptions {
   context: Rule.RuleContext
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
   specifier: string
+  importerFile: string
   importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
   importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
   targetFile: string
 }
 
-function reportDeepRelativeImport(
+function reportDeepSameModuleImport(
   context: Rule.RuleContext,
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  specifier: string,
+  importerFile: string,
+  targetFile: string,
 ): void {
-  if (!isRelativeTooDeep(specifier)) return
+  if (!isSameModuleImportTooDeep(importerFile, targetFile)) return
   context.report({ node, messageId: 'tooDeep' })
+}
+
+function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {
+  const importerDir = normalizePath(node_path.dirname(importerFile))
+  const relativeTarget = normalizePath(node_path.relative(importerDir, targetFile))
+  return isForwardTraversalTooDeep(relativeTarget)
+}
+
+function isForwardTraversalTooDeep(relativeTarget: string): boolean {
+  const segments = relativeTarget.split('/').filter(Boolean)
+  if (segments.length === 0) return false
+  if (segments[0] === '..') return false
+  const depth = Math.max(segments.length - 1, 0)
+  return depth > 1
 }
 
 function isRelativeTooDeep(specifier: string): boolean {
