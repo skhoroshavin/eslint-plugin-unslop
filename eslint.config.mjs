@@ -35,6 +35,7 @@ export default [
       'unslop/read-friendly-order': ['error'],
       'unslop/import-control': ['error'],
       'unslop/export-control': ['error'],
+      'unslop/no-false-sharing': 'error',
       'no-restricted-syntax': [
         'error',
         {

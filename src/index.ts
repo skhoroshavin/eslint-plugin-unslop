@@ -2,7 +2,7 @@ import type { ESLint, Linter } from 'eslint'
 import packageJson from '../package.json'
 import rules from './rules/index.js'
 
-// configs.recommended.plugins.unslop must reference the plugin itself.
+// configs.minimal.plugins.unslop must reference the plugin itself.
 // Build plugin first with an empty configs object, then assign below.
 const plugin: ESLint.Plugin = {
   meta: {
@@ -13,8 +13,8 @@ const plugin: ESLint.Plugin = {
   configs: {},
 }
 
-const recommended: Linter.Config = {
-  name: 'unslop/recommended',
+const minimal: Linter.Config = {
+  name: 'unslop/minimal',
   plugins: { unslop: plugin },
   rules: {
     'unslop/no-special-unicode': 'error',
@@ -22,6 +22,19 @@ const recommended: Linter.Config = {
   },
 }
 
-plugin.configs!['recommended'] = recommended
+const full: Linter.Config = {
+  name: 'unslop/full',
+  plugins: { unslop: plugin },
+  rules: {
+    'unslop/no-special-unicode': 'error',
+    'unslop/no-unicode-escape': 'error',
+    'unslop/import-control': 'error',
+    'unslop/export-control': 'error',
+    'unslop/no-false-sharing': 'error',
+  },
+}
+
+plugin.configs!['minimal'] = minimal
+plugin.configs!['full'] = full
 
 export default plugin

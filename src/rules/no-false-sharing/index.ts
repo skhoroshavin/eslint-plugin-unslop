@@ -1,6 +1,11 @@
 import node_path from 'node:path'
 import node_fs from 'node:fs'
 import type { Rule } from 'eslint'
+import {
+  readArchitecturePolicy,
+  matchFileToArchitectureModule,
+  normalizePath,
+} from '../../utils/index.js'
 
 const rule: Rule.RuleModule = {
   meta: {
@@ -9,27 +14,7 @@ const rule: Rule.RuleModule = {
       description: 'Disallow shared files that are only used by one consumer',
       recommended: false,
     },
-    schema: [
-      {
-        type: 'object',
-        properties: {
-          dirs: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                path: { type: 'string' },
-                mode: { enum: ['file', 'dir'] },
-              },
-              required: ['path'],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ['dirs'],
-        additionalProperties: false,
-      },
-    ],
+    schema: [],
     messages: {
       notTrulyShared: 'only used by: {{consumers}} -> Must be used by 2+ entities',
     },
@@ -38,19 +23,19 @@ const rule: Rule.RuleModule = {
     const filename = context.filename
     if (!filename) return {}
 
-    const dirs = getConfigDirs(context.options[0])
-    if (dirs.length === 0) return {}
+    const policy = readArchitecturePolicy(context)
+    if (policy === undefined) return {}
 
-    const posixFilename = toPosix(filename)
-    const matchedDir = findMatchingDir(posixFilename, dirs)
-    if (!matchedDir) return {}
+    const matched = matchFileToArchitectureModule(filename, policy)
+    if (matched === undefined) return {}
+    if (!matched.policy.shared) return {}
 
-    const projectRoot = findProjectRoot(filename, matchedDir.path)
-    if (!projectRoot) return {}
+    const sourceDir = deriveSourceDir(filename, policy.sourceRoot)
+    if (sourceDir === undefined) return {}
 
     return {
       Program(node) {
-        const consumers = findConsumers(filename, projectRoot, matchedDir)
+        const consumers = findConsumers(filename, sourceDir)
         if (consumers !== undefined) {
           context.report({ node, messageId: 'notTrulyShared', data: { consumers } })
         }
@@ -59,39 +44,36 @@ const rule: Rule.RuleModule = {
   },
 }
 
-interface DirConfig {
-  path: string
-  mode?: 'file' | 'dir'
+function deriveSourceDir(filename: string, sourceRoot: string | undefined): string | undefined {
+  const normalized = normalizePath(filename)
+  if (sourceRoot === undefined) return undefined
+  const marker = `/${sourceRoot}/`
+  const index = normalized.indexOf(marker)
+  if (index === -1) return undefined
+  return normalized.slice(0, index + marker.length - 1)
 }
 
-function findConsumers(
-  filename: string,
-  projectRoot: string,
-  matchedDir: DirConfig,
-): string | undefined {
-  const importers = findImporters(filename, projectRoot)
+function findConsumers(filename: string, sourceDir: string): string | undefined {
+  const importers = findImporters(filename, sourceDir)
   const nonTestImporters = importers.filter((f) => !isTestFile(f))
-  const mode = matchedDir.mode ?? 'dir'
-  const entities = new Set(nonTestImporters.map((f) => getEntityName(f, projectRoot, mode)))
+  const entities = new Set(nonTestImporters.map((f) => getEntityName(f, sourceDir)))
   if (entities.size < 2) return [...entities].join(', ')
   return undefined
 }
 
-function getConfigDirs(option: unknown): DirConfig[] {
-  if (typeof option !== 'object' || option === null) return []
-  if (!('dirs' in option)) return []
-  const dirs = option.dirs
-  if (!Array.isArray(dirs)) return []
-  return dirs
+function getEntityName(importerPath: string, sourceDir: string): string {
+  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
+  const parts = rel.split('/')
+  return parts[0]
 }
 
 function isTestFile(filePath: string): boolean {
   return /\.test\.[jt]sx?$/.test(filePath)
 }
 
-function findImporters(targetPath: string, projectRoot: string): string[] {
+function findImporters(targetPath: string, sourceDir: string): string[] {
   const results: string[] = []
-  scanDir(projectRoot, targetPath, results)
+  scanDir(sourceDir, targetPath, results)
   return results
 }
 
@@ -167,34 +149,6 @@ function resolveImportTarget(fromDir: string, spec: string): string | null {
     if (node_fs.existsSync(candidate)) return candidate
   }
   return null
-}
-
-function getEntityName(importerPath: string, projectRoot: string, mode: string): string {
-  const rel = toPosix(node_path.relative(projectRoot, importerPath))
-  if (mode === 'dir') {
-    const parts = rel.split('/')
-    return parts[0]
-  }
-  return rel
-}
-
-function findMatchingDir(posixFilename: string, dirs: DirConfig[]): DirConfig | undefined {
-  for (const dir of dirs) {
-    const dirSegment = '/' + dir.path + '/'
-    if (posixFilename.includes(dirSegment)) return dir
-  }
-  return undefined
-}
-
-function findProjectRoot(filename: string, sharedDirName: string): string | undefined {
-  const posix = toPosix(filename)
-  const idx = posix.lastIndexOf('/' + sharedDirName + '/')
-  if (idx === -1) return undefined
-  return posix.slice(0, idx)
-}
-
-function toPosix(p: string): string {
-  return p.split(node_path.sep).join('/')
 }
 
 export default rule
