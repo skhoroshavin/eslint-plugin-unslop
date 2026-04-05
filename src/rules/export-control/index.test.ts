@@ -30,6 +30,20 @@ scenario('shared entrypoint uses export-all', rule, {
   errors: [{ messageId: 'exportAllForbidden' }],
 })
 
+scenario('shared types entrypoint uses export-all', rule, {
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'shared/ui': { shared: true },
+      },
+    },
+  },
+  filename: '/repo/src/shared/ui/types.ts',
+  code: "export * from './internal.ts'",
+  errors: [{ messageId: 'exportAllForbidden' }],
+})
+
 scenario('exported symbol matching the regex contract is allowed', rule, {
   settings: {
     unslop: {
