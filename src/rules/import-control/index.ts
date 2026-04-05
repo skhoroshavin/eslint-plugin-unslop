@@ -1,10 +1,9 @@
 import type { Rule } from 'eslint'
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
 import {
-  allowsImport,
   isPublicEntrypoint,
-  isRelativeTooDeep,
   matchFileToArchitectureModule,
+  normalizePath,
   readArchitecturePolicy,
   resolveImportTarget,
 } from '../../utils/index.js'
@@ -87,7 +86,8 @@ function getTargetFile(
   sourceRoot: string | undefined,
   specifier: string,
 ): string | undefined {
-  return resolveImportTarget(filename, sourceRoot, specifier)
+  const resolved = resolveImportTarget(filename, sourceRoot, specifier)
+  return resolved === undefined ? undefined : normalizePath(resolved)
 }
 
 function getImportee(
@@ -153,6 +153,17 @@ function reportDeepRelativeImport(
 ): void {
   if (!isRelativeTooDeep(specifier)) return
   context.report({ node, messageId: 'tooDeep' })
+}
+
+function isRelativeTooDeep(specifier: string): boolean {
+  if (!specifier.startsWith('./')) return false
+  const parts = specifier.slice(2).split('/').filter(Boolean)
+  const depth = Math.max(parts.length - 1, 0)
+  return depth > 1
+}
+
+function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
+  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
 }
 
 export default rule

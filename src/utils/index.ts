@@ -1,7 +1,5 @@
 export {
-  allowsImport,
   isPublicEntrypoint,
-  isRelativeTooDeep,
   matchFileToArchitectureModule,
   normalizePath,
   readArchitecturePolicy,

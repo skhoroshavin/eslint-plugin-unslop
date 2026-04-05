@@ -316,17 +316,6 @@ const ENTRYPOINT_FILES = new Set([
   'types.jsx',
 ])
 
-export function isRelativeTooDeep(specifier: string): boolean {
-  if (!specifier.startsWith('./')) return false
-  const parts = specifier.slice(2).split('/').filter(Boolean)
-  const depth = Math.max(parts.length - 1, 0)
-  return depth > 1
-}
-
-export function allowsImport(policy: ArchitectureModulePolicy, targetMatcher: string): boolean {
-  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
-}
-
 interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
