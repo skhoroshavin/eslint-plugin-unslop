@@ -1,62 +1,130 @@
-/* eslint-disable unslop/read-friendly-order */
+/**
+ * Single shared test utility for all rule tests.
+ *
+ * Exports exactly ONE thing: scenario()
+ *
+ * Do NOT add exports. If you think you need a second export,
+ * update openspec/specs/test-conventions/spec.md first.
+ */
 import node_fs from 'node:fs'
-import node_path from 'node:path'
 import node_os from 'node:os'
+import node_path from 'node:path'
+import { test } from 'vitest'
+import parser from '@typescript-eslint/parser'
 import { RuleTester } from 'eslint'
+import type { Rule } from 'eslint'
 
-export const ruleTester = new RuleTester({
-  languageOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-  },
-})
+export function scenario(
+  description: string,
+  rule: Rule.RuleModule,
+  options: ScenarioOptions,
+): void {
+  test(description, () => {
+    if (options.files !== undefined) {
+      runWithTempDir(rule, options)
+    } else {
+      runInMemory(rule, options)
+    }
+  })
+}
 
-export class ProjectFixture {
-  private readonly prefix: string
-  private readonly files: FixtureFile[]
-  private dir = ''
+scenario.todo = (description: string): void => {
+  test.todo(description)
+}
 
-  constructor(options: ProjectFixtureOptions) {
-    this.prefix = options.prefix
-    this.files = options.files
-  }
+function runInMemory(rule: Rule.RuleModule, options: ScenarioOptions): void {
+  const tester = makeTester(options)
+  runTester(tester, rule, options, options.filename)
+}
 
-  init(): void {
-    this.dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), this.prefix))
-    for (const file of this.files) {
-      const full = node_path.join(this.dir, file.path)
+function runWithTempDir(rule: Rule.RuleModule, options: ScenarioOptions): void {
+  const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-test-'))
+  try {
+    for (const file of options.files ?? []) {
+      const full = node_path.join(dir, file.path)
       node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
       node_fs.writeFileSync(full, file.content ?? '')
     }
+    const filename =
+      options.filename !== undefined ? node_path.join(dir, options.filename) : undefined
+    const hasTsconfig = (options.files ?? []).some((f) => f.path === 'tsconfig.json')
+    const tester = hasTsconfig ? makeFsTester(options, dir) : makeTester(options)
+    runTester(tester, rule, options, filename)
+  } finally {
+    node_fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+function makeTester(options: ScenarioOptions): RuleTester {
+  const config: Record<string, unknown> = {
+    languageOptions:
+      options.typescript === true
+        ? { parser, ecmaVersion: 'latest', sourceType: 'module' }
+        : { ecmaVersion: 'latest', sourceType: 'module' },
+  }
+  if (options.settings !== undefined) {
+    config['settings'] = options.settings
+  }
+  return new RuleTester(config)
+}
+
+function makeFsTester(options: ScenarioOptions, dir: string): RuleTester {
+  const config: Record<string, unknown> = {
+    languageOptions: {
+      parser,
+      parserOptions: {
+        project: node_path.join(dir, 'tsconfig.json'),
+        tsconfigRootDir: dir,
+      },
+    },
+  }
+  if (options.settings !== undefined) {
+    config['settings'] = options.settings
+  }
+  return new RuleTester(config)
+}
+
+function runTester(
+  tester: RuleTester,
+  rule: Rule.RuleModule,
+  options: ScenarioOptions,
+  filename: string | undefined,
+): void {
+  const isInvalid = options.errors !== undefined && options.errors.length > 0
+
+  const base = {
+    code: options.code,
+    ...(filename !== undefined && { filename }),
   }
 
-  cleanup(): void {
-    if (this.dir) {
-      node_fs.rmSync(this.dir, { recursive: true, force: true })
+  if (isInvalid) {
+    const invalidCase = {
+      ...base,
+      errors: options.errors!,
+      ...(options.output !== undefined && { output: options.output }),
     }
-  }
-
-  filePath(relative: string): string {
-    return node_path.join(this.dir, relative)
-  }
-
-  write(relative: string, content: string): void {
-    const full = node_path.join(this.dir, relative)
-    node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
-    node_fs.writeFileSync(full, content)
-  }
-
-  read(relative: string): string {
-    return node_fs.readFileSync(node_path.join(this.dir, relative), 'utf-8')
+    tester.run('rule', rule, { valid: [], invalid: [invalidCase] })
+  } else {
+    tester.run('rule', rule, { valid: [base], invalid: [] })
   }
 }
 
-interface ProjectFixtureOptions {
-  prefix: string
-  files: FixtureFile[]
+interface ScenarioOptions {
+  files?: ScenarioFile[]
+  typescript?: boolean
+  settings?: unknown
+  code: string
+  filename?: string
+  errors?: ScenarioError[]
+  output?: string | null
 }
 
-interface FixtureFile {
+interface ScenarioFile {
   path: string
   content?: string
+}
+
+interface ScenarioError {
+  messageId?: string
+  message?: string
 }
