@@ -62,8 +62,7 @@ function deriveProjectRoot(filename: string, sourceRoot: string | undefined): st
 
 function findConsumers(filename: string, sourceDir: string): string | undefined {
   const importers = findImporters(filename, sourceDir)
-  const nonTestImporters = importers.filter((f) => !isTestFile(f))
-  const entities = new Set(nonTestImporters.map((f) => getEntityName(f, sourceDir)))
+  const entities = new Set(importers.map((f) => getEntityName(f, sourceDir)))
   if (entities.size < 2) return [...entities].join(', ')
   return undefined
 }
@@ -73,10 +72,6 @@ function getEntityName(importerPath: string, sourceDir: string): string {
   const parts = rel.split('/')
   if (parts.length <= 1) return rel
   return parts.slice(0, -1).join('/')
-}
-
-function isTestFile(filePath: string): boolean {
-  return /\.test\.[jt]sx?$/.test(filePath)
 }
 
 function findImporters(targetPath: string, sourceDir: string): string[] {

@@ -17,7 +17,6 @@ export default [
         sourceRoot: 'src',
         architecture: {
           utils: { shared: true },
-          'utils/test-fixtures': { shared: false },
           'rules/*': {
             imports: ['utils', 'utils/test-fixtures'],
             exports: ['^default$'],

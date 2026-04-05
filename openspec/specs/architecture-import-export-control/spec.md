@@ -49,7 +49,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: no-false-sharing SHALL count consumers in directory mode only
 
-`unslop/no-false-sharing` MUST count distinct consumers at the directory level (first path segment relative to project root). File-level consumer counting is not supported.
+`unslop/no-false-sharing` MUST count distinct consumers at the directory level (first path segment relative to project root). File-level consumer counting is not supported. All files — including test files — count as consumers.
 
 #### Scenario: Two importers in the same directory
 
@@ -60,6 +60,11 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 - **WHEN** a shared file is imported by files in at least two distinct directories
 - **THEN** `no-false-sharing` MUST allow the file
+
+#### Scenario: Test files count as consumers
+
+- **WHEN** a shared file is imported by test files in two or more distinct directories
+- **THEN** `no-false-sharing` MUST allow the file (test files are valid consumers)
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 

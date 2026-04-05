@@ -51,38 +51,33 @@ scenario('shared file only imported by files in one directory raises false-shari
   errors: [{ messageId: 'notTrulyShared' }],
 })
 
+scenario('test files count as consumers — one non-test dir plus two test dirs has no error', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/shared/index.ts', content: 'export const x = 1' },
+    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
+    { path: 'src/featureB/consumer.test.ts', content: "import { x } from '../shared'" },
+    { path: 'src/featureC/consumer.test.ts', content: "import { x } from '../shared'" },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/shared/index.ts',
+  code: 'export const x = 1',
+})
+
 scenario(
-  'test files do not count as consumers — one non-test dir plus test files still raises error',
+  'shared file only imported by test files in one directory raises false-sharing error',
   rule,
   {
     files: [
       TSCONFIG,
       { path: 'src/shared/index.ts', content: 'export const x = 1' },
-      { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-      { path: 'src/featureB/consumer.test.ts', content: "import { x } from '../shared'" },
-      { path: 'src/featureC/consumer.test.ts', content: "import { x } from '../shared'" },
+      { path: 'src/featureA/consumerA.test.ts', content: "import { x } from '../shared'" },
+      { path: 'src/featureA/consumerB.test.ts', content: "import { x } from '../shared'" },
     ],
     settings: SHARED_SETTINGS,
     filename: 'src/shared/index.ts',
     code: 'export const x = 1',
     errors: [{ messageId: 'notTrulyShared' }],
-  },
-)
-
-scenario(
-  'test files do not prevent valid cases — two non-test dirs plus a test file has no error',
-  rule,
-  {
-    files: [
-      TSCONFIG,
-      { path: 'src/shared/index.ts', content: 'export const x = 1' },
-      { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-      { path: 'src/featureB/consumer.ts', content: "import { x } from '../shared'" },
-      { path: 'src/featureC/consumer.test.ts', content: "import { x } from '../shared'" },
-    ],
-    settings: SHARED_SETTINGS,
-    filename: 'src/shared/index.ts',
-    code: 'export const x = 1',
   },
 )
 
