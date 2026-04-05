@@ -12,6 +12,17 @@ export default [
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          'rules/*': {
+            imports: ['utils', 'utils/test-fixtures'],
+            exports: ['^default$'],
+          },
+        },
+      },
+    },
     languageOptions: {
       globals: globals.node,
     },
@@ -21,8 +32,9 @@ export default [
       'max-params': ['error', { max: 4 }],
       'max-lines-per-function': ['error', { max: 50 }],
       'max-lines': ['error', { max: 600 }],
-      'unslop/no-deep-imports': ['error', { sourceRoot: 'src' }],
       'unslop/read-friendly-order': ['error'],
+      'unslop/import-control': ['error'],
+      'unslop/export-control': ['error'],
       'no-restricted-syntax': [
         'error',
         {
@@ -30,18 +42,6 @@ export default [
           message: "Type assertions with 'as' are forbidden.",
         },
       ],
-    },
-  },
-  {
-    files: ['src/**/*.ts'],
-    languageOptions: {
-      parserOptions: {
-        project: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
-      'unslop/no-false-sharing': ['error', { dirs: [{ path: 'src/utils', mode: 'dir' }] }],
     },
   },
   {

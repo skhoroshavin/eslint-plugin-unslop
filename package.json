@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsup",
     "fix": "knip --fix && eslint . --fix && prettier . --write",
-    "verify": "prettier . --check && knip && depcruise src && jscpd && tsc --noEmit && tsup && eslint .",
+    "verify": "prettier . --check && knip && jscpd && tsc --noEmit && tsup && eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
@@ -55,7 +55,6 @@
     "@types/estree": "^1.0.8",
     "@types/node": "^22.18.0",
     "@typescript-eslint/parser": "^8.57.2",
-    "dependency-cruiser": "^17.3.10",
     "eslint": "^9.39.1",
     "globals": "^17.4.0",
     "jscpd": "^4.0.8",

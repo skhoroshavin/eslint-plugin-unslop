@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, test } from 'vitest'
 import parser from '@typescript-eslint/parser'
 import { RuleTester } from 'eslint'
 import rule from './index.js'
-import { ProjectFixture } from '../../utils/test-fixtures.js'
+import { ProjectFixture } from '../../utils/test-fixtures/index.js'
 
 beforeEach(() => {
   fixture.init()

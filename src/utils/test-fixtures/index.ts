@@ -1,4 +1,4 @@
-/* eslint-disable unslop/no-false-sharing, unslop/read-friendly-order */
+/* eslint-disable unslop/read-friendly-order */
 import node_fs from 'node:fs'
 import node_path from 'node:path'
 import node_os from 'node:os'

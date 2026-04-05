@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import parser from '@typescript-eslint/parser'
 import { RuleTester } from 'eslint'
 import rule from './index.js'
-import { ruleTester } from '../../utils/test-fixtures.js'
+import { ruleTester } from '../../utils/test-fixtures/index.js'
 
 test('allows top-level symbols before helpers', () => {
   ruleTester.run('read-friendly-order', rule, {
