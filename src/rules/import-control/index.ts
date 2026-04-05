@@ -1,10 +1,9 @@
 import type { Rule } from 'eslint'
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
 import {
-  allowsImport,
   isPublicEntrypoint,
-  isRelativeTooDeep,
   matchFileToArchitectureModule,
+  normalizePath,
   readArchitecturePolicy,
   resolveImportTarget,
 } from '../../utils/index.js'
@@ -20,6 +19,8 @@ const rule: Rule.RuleModule = {
     messages: {
       notAllowed: 'Import denied: module {{from}} cannot import module {{to}}.',
       nonEntrypoint: 'Import denied: cross-module imports must target index.ts or types.ts.',
+      namespaceLocalForbidden:
+        'Import denied: local cross-module namespace imports are not allowed.',
       tooDeep: 'Import denied: same-module relative imports can only go one level deeper.',
     },
   },
@@ -85,7 +86,8 @@ function getTargetFile(
   sourceRoot: string | undefined,
   specifier: string,
 ): string | undefined {
-  return resolveImportTarget(filename, sourceRoot, specifier)
+  const resolved = resolveImportTarget(filename, sourceRoot, specifier)
+  return resolved === undefined ? undefined : normalizePath(resolved)
 }
 
 function getImportee(
@@ -102,6 +104,11 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
+  if (isLocalNamespaceImport(node)) {
+    context.report({ node, messageId: 'namespaceLocalForbidden' })
+    return
+  }
+
   if (isShallowRelativeEntrypoint(specifier, targetFile)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
@@ -115,6 +122,13 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
+}
+
+function isLocalNamespaceImport(
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
+): boolean {
+  if (node.type !== 'ImportDeclaration') return false
+  return node.specifiers.some((specifier) => specifier.type === 'ImportNamespaceSpecifier')
 }
 
 function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {
@@ -139,6 +153,17 @@ function reportDeepRelativeImport(
 ): void {
   if (!isRelativeTooDeep(specifier)) return
   context.report({ node, messageId: 'tooDeep' })
+}
+
+function isRelativeTooDeep(specifier: string): boolean {
+  if (!specifier.startsWith('./')) return false
+  const parts = specifier.slice(2).split('/').filter(Boolean)
+  const depth = Math.max(parts.length - 1, 0)
+  return depth > 1
+}
+
+function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
+  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
 }
 
 export default rule

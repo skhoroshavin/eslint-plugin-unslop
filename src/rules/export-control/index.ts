@@ -1,12 +1,7 @@
 import type { Rule } from 'eslint'
-import type {
-  ExportAllDeclaration,
-  ExportDefaultDeclaration,
-  ExportNamedDeclaration,
-  Pattern,
-  VariableDeclaration,
-} from 'estree'
+import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 import {
+  getDeclarationNamesFromExport,
   isPublicEntrypoint,
   matchFileToArchitectureModule,
   readArchitecturePolicy,
@@ -21,8 +16,7 @@ const rule: Rule.RuleModule = {
     },
     schema: [],
     messages: {
-      exportAllForbidden:
-        'Export denied: export * is not allowed when exports policy is configured.',
+      exportAllForbidden: 'Export denied: export * is not allowed in module entrypoints.',
       symbolDenied:
         'Export denied: symbol "{{symbol}}" does not match configured exports patterns.',
       invalidExportRegex: 'Configuration error: invalid exports pattern "{{pattern}}"',
@@ -32,38 +26,51 @@ const rule: Rule.RuleModule = {
     const filename = context.filename
     if (!filename) return {}
 
-    const policy = readArchitecturePolicy(context)
-    if (policy === undefined) return {}
-    if (!isPublicEntrypoint(filename)) return {}
-
-    const moduleMatch = matchFileToArchitectureModule(filename, policy)
-    if (moduleMatch === undefined) return {}
-    if (moduleMatch.policy.exports.length === 0) return {}
-
-    const built = buildPatterns(moduleMatch.policy.exports)
-    if (built.invalid !== undefined) {
+    const state = buildRuleState(context, filename)
+    if (state === undefined) return {}
+    if (state.invalidPattern !== undefined) {
       const root = context.getSourceCode().ast
       context.report({
         node: root,
         messageId: 'invalidExportRegex',
-        data: { pattern: built.invalid },
+        data: { pattern: state.invalidPattern },
       })
       return {}
     }
-    const patterns = built.patterns
 
     return {
       ExportNamedDeclaration(node) {
-        checkNamedExport(context, node, patterns)
+        checkNamedExport(context, node, state.patterns, state.shouldForbidExportAll)
       },
       ExportAllDeclaration(node) {
+        if (!state.shouldForbidExportAll) return
         checkExportAll(context, node)
       },
       ExportDefaultDeclaration(node) {
-        checkDefaultExport(context, node, patterns)
+        if (state.patterns === undefined) return
+        checkDefaultExport(context, node, state.patterns)
       },
     }
   },
+}
+
+function buildRuleState(context: Rule.RuleContext, filename: string): RuleState | undefined {
+  const policy = readArchitecturePolicy(context)
+  if (policy === undefined) return undefined
+  if (!isPublicEntrypoint(filename)) return undefined
+
+  const moduleMatch = matchFileToArchitectureModule(filename, policy)
+  if (moduleMatch === undefined) return undefined
+
+  const hasExportContract = moduleMatch.policy.exports.length > 0
+  const shouldForbidExportAll = true
+  if (!hasExportContract) return { shouldForbidExportAll }
+
+  const built = buildPatterns(moduleMatch.policy.exports)
+  if (built.invalid !== undefined) {
+    return { shouldForbidExportAll, invalidPattern: built.invalid }
+  }
+  return { shouldForbidExportAll, patterns: built.patterns }
 }
 
 function buildPatterns(values: string[]): { patterns: RegExp[]; invalid?: string } {
@@ -81,12 +88,14 @@ function buildPatterns(values: string[]): { patterns: RegExp[]; invalid?: string
 function checkNamedExport(
   context: Rule.RuleContext,
   node: ExportNamedDeclaration,
-  patterns: RegExp[],
+  patterns: RegExp[] | undefined,
+  shouldForbidExportAll: boolean,
 ): void {
-  if (node.source !== null && node.specifiers.length === 0) {
+  if (node.source !== null && node.specifiers.length === 0 && shouldForbidExportAll) {
     context.report({ node, messageId: 'exportAllForbidden' })
     return
   }
+  if (patterns === undefined) return
   for (const specifier of node.specifiers) {
     if (specifier.exported.type !== 'Identifier') continue
     if (matchesAnyPattern(specifier.exported.name, patterns)) continue
@@ -106,40 +115,11 @@ function reportDeclarationExportNames(
 ): void {
   const declaration = node.declaration
   if (declaration === null || declaration === undefined) return
-  const names = getDeclarationNames(declaration)
+  const names = getDeclarationNamesFromExport(declaration)
   for (const name of names) {
     if (matchesAnyPattern(name, patterns)) continue
     context.report({ node, messageId: 'symbolDenied', data: { symbol: name } })
   }
-}
-
-function getDeclarationNames(declaration: unknown): string[] {
-  if (isVariableDeclaration(declaration)) {
-    return declaration.declarations.flatMap((entry) => getPatternNames(entry.id))
-  }
-  if (hasStringName(declaration)) {
-    return [declaration.id.name]
-  }
-  return []
-}
-
-function isVariableDeclaration(value: unknown): value is VariableDeclaration {
-  if (typeof value !== 'object' || value === null) return false
-  return 'type' in value && value.type === 'VariableDeclaration'
-}
-
-function getPatternNames(pattern: Pattern): string[] {
-  if (pattern.type === 'Identifier') return [pattern.name]
-  return []
-}
-
-function hasStringName(value: unknown): value is { id: { name: string } } {
-  if (typeof value !== 'object' || value === null) return false
-  if (!('id' in value)) return false
-  const id = value.id
-  if (typeof id !== 'object' || id === null) return false
-  if (!('name' in id)) return false
-  return typeof id.name === 'string'
 }
 
 function checkDefaultExport(
@@ -157,6 +137,12 @@ function checkExportAll(context: Rule.RuleContext, node: ExportAllDeclaration): 
 
 function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(symbol))
+}
+
+interface RuleState {
+  shouldForbidExportAll: boolean
+  patterns?: RegExp[]
+  invalidPattern?: string
 }
 
 export default rule

@@ -50,6 +50,36 @@ scenario('cross-module import targeting an internal non-entrypoint file is repor
   errors: [{ messageId: 'nonEntrypoint' }],
 })
 
+scenario('local cross-module namespace import is rejected', rule, {
+  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import * as UserModels from '../../models/user/index.ts'",
+  errors: [{ messageId: 'namespaceLocalForbidden' }],
+})
+
+scenario('external dependency namespace import is allowed', rule, {
+  files: [{ path: 'src/repository/user/service.ts' }],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import * as nodePath from 'node:path'\nvoid nodePath.sep",
+})
+
 scenario(
   'shallow relative import to a direct child module entrypoint is implicitly allowed',
   rule,

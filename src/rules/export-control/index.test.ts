@@ -16,6 +16,48 @@ scenario('module with no exports policy allows any export', rule, {
   code: 'export const anything = 1',
 })
 
+scenario('shared entrypoint uses export-all', rule, {
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'shared/ui': { shared: true },
+      },
+    },
+  },
+  filename: '/repo/src/shared/ui/index.ts',
+  code: "export * from './internal.ts'",
+  errors: [{ messageId: 'exportAllForbidden' }],
+})
+
+scenario('shared types entrypoint uses export-all', rule, {
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'shared/ui': { shared: true },
+      },
+    },
+  },
+  filename: '/repo/src/shared/ui/types.ts',
+  code: "export * from './internal.ts'",
+  errors: [{ messageId: 'exportAllForbidden' }],
+})
+
+scenario('non-shared entrypoint uses export-all', rule, {
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'models/*': { imports: ['utils'] },
+      },
+    },
+  },
+  filename: '/repo/src/models/user/index.ts',
+  code: "export * from './internal.ts'",
+  errors: [{ messageId: 'exportAllForbidden' }],
+})
+
 scenario('exported symbol matching the regex contract is allowed', rule, {
   settings: {
     unslop: {

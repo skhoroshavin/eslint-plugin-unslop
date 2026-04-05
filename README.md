@@ -45,14 +45,14 @@ export default [
 
 This turns on:
 
-| Rule                         | Severity | What it does                                                        |
-| ---------------------------- | -------- | ------------------------------------------------------------------- |
-| `unslop/import-control`      | error    | Enforces declared module import boundaries                          |
-| `unslop/export-control`      | error    | Restricts public exports to declared patterns                       |
-| `unslop/no-false-sharing`    | error    | Flags shared modules only used by one consumer                      |
-| `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
-| `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                     |
-| `unslop/read-friendly-order` | error    | Enforces top-down, dependency-friendly declaration order            |
+| Rule                         | Severity | What it does                                                           |
+| ---------------------------- | -------- | ---------------------------------------------------------------------- |
+| `unslop/import-control`      | error    | Enforces boundaries and forbids local namespace imports                |
+| `unslop/export-control`      | error    | Restricts export patterns and forbids `export *` in module entrypoints |
+| `unslop/no-false-sharing`    | error    | Flags shared entrypoint symbols with fewer than two consumer groups    |
+| `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors    |
+| `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                        |
+| `unslop/read-friendly-order` | error    | Enforces top-down, dependency-friendly declaration order               |
 
 The `configs.minimal` config contains only the zero-config symbol fixers (`no-special-unicode` and `no-unicode-escape`). It is included automatically within `configs.full`, or can be used standalone for projects that don't need architecture enforcement:
 
@@ -72,6 +72,7 @@ Think of this as customs control for your modules - you declare which modules ar
 The rule reads from a shared policy in `settings.unslop.architecture`. It's deny-by-default for cross-module imports, which means forgetting to declare a dependency is a loud error rather than a silent free-for-all. It also enforces:
 
 - cross-module imports must arrive through the public gate (`index.ts` or `types.ts`)
+- local cross-module namespace imports are forbidden (`import * as X from '<local-module>'`)
 - same-module relative imports can only go one level deeper - no tunnelling into internals
 - files that don't match any declared module are denied (fail-closed, not fail-silently)
 
@@ -115,11 +116,11 @@ export default [
 
 The customs declaration form for the other direction: what are you actually exporting from your module's public entrypoints?
 
-When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually.
+When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually. Regardless of module policy, `export * from ...` is rejected in `index.ts` and `types.ts` so symbol provenance stays explicit.
 
 ### `unslop/no-false-sharing`
 
-The "shared" folder anti-pattern detector. LLMs (and some humans also) love creating shared utilities that are only used by one consumer - or worse, by nobody at all. This rule requires that modules marked as `shared` in your architecture settings are actually imported by at least two separate directory-level consumers. If it's only used in one place, it's not shared - it's misplaced.
+The "shared" folder anti-pattern detector. LLMs (and some humans also) love creating shared APIs that are only used by one consumer - or worse, by nobody at all. This rule evaluates symbols exported from shared module entrypoints (`index.ts` and `types.ts`) and requires each exported symbol to be imported by at least two separate directory-level consumer groups. If a symbol is used in only one place, it's not shared - it's misplaced.
 
 #### Configuration
 
@@ -148,18 +149,20 @@ export default [
 
 The rule takes no options - all configuration comes from the shared architecture settings, consistent with `import-control` and `export-control`.
 
-Consumer counting is always at the directory level: the first path segment relative to the source root. A file in `src/shared/format-date.ts` must be imported by files in at least two distinct top-level directories (e.g., `featureA` and `featureB`).
+Consumer counting is always at the directory level: the importer file path relative to `sourceRoot`, minus filename. Both value imports and `import type` imports count as consumers, and alias imports such as `@/shared/index` are resolved the same as relative imports.
 
 #### What it catches
 
 ```
-src/shared/format-date.ts
-  -> only imported by src/features/calendar/view.ts
-  -> error: must be used by 2+ entities
+src/shared/index.ts
+  export const formatDate = ...
+  -> imported only by src/features/calendar/view.ts
+  -> error: symbol "formatDate" has 1 consumer group(s) (group: features/calendar)
 
-src/utils/old-helper.ts
+src/shared/types.ts
+  export type LegacyOptions = ...
   -> not imported by anyone
-  -> error: must be used by 2+ entities
+  -> error: symbol "LegacyOptions" has 0 consumer group(s) (no consumers found)
 ```
 
 ### `unslop/read-friendly-order`

@@ -261,7 +261,22 @@ export function normalizePath(pathValue: string): string {
 function resolveExistingFile(basePath: string): string | undefined {
   const candidates = buildCandidates(basePath)
   for (const candidate of candidates) {
-    if (node_fs.existsSync(candidate)) return candidate
+    const resolved = resolveCandidate(candidate)
+    if (resolved !== undefined) return resolved
+  }
+  return undefined
+}
+
+function resolveCandidate(candidate: string): string | undefined {
+  if (!node_fs.existsSync(candidate)) return undefined
+  const stat = node_fs.statSync(candidate)
+  if (stat.isFile()) return candidate
+  if (!stat.isDirectory()) return undefined
+  for (const extension of FILE_EXTENSIONS.slice(1)) {
+    const indexPath = node_path.join(candidate, `index${extension}`)
+    if (!node_fs.existsSync(indexPath)) continue
+    const indexStat = node_fs.statSync(indexPath)
+    if (indexStat.isFile()) return indexPath
   }
   return undefined
 }
@@ -300,17 +315,6 @@ const ENTRYPOINT_FILES = new Set([
   'types.js',
   'types.jsx',
 ])
-
-export function isRelativeTooDeep(specifier: string): boolean {
-  if (!specifier.startsWith('./')) return false
-  const parts = specifier.slice(2).split('/').filter(Boolean)
-  const depth = Math.max(parts.length - 1, 0)
-  return depth > 1
-}
-
-export function allowsImport(policy: ArchitectureModulePolicy, targetMatcher: string): boolean {
-  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
-}
 
 interface ArchitectureModulePolicy {
   imports: string[]

@@ -1,116 +1,140 @@
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: architecture-import-export-control/spec.md (shared: true behavior)
+// spec: architecture-import-export-control/spec.md
+// spec: no-false-sharing-symbol-analysis/spec.md
 
 const TSCONFIG = {
   path: 'tsconfig.json',
   content: '{"compilerOptions":{"strict":true},"include":["**/*.ts"]}',
 }
+
 const SHARED_SETTINGS = {
-  unslop: { sourceRoot: 'src', architecture: { shared: { shared: true } } },
+  unslop: {
+    sourceRoot: 'src',
+    architecture: {
+      'ui/components': { shared: true },
+      'feature-a/*': { imports: [] },
+      'feature-b/*': { imports: [] },
+    },
+  },
 }
 
-scenario(
-  'file not marked as shared is never checked regardless of how many consumers it has',
-  rule,
-  {
-    files: [
-      TSCONFIG,
-      { path: 'src/featureA/util.ts', content: 'export const x = 1' },
-      { path: 'src/featureB/consumer.ts', content: "import { x } from '../featureA/util'" },
-    ],
-    settings: SHARED_SETTINGS,
-    filename: 'src/featureA/util.ts',
-    code: 'export const x = 1',
-  },
-)
-
-scenario('shared file imported by two different directories has no error', rule, {
+scenario('alias import counts as a symbol consumer', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-    { path: 'src/featureB/consumer.ts', content: "import { x } from '../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
+    {
+      path: 'src/feature-b/screen.ts',
+      content: "import { Button } from '@/ui/components/index'",
+    },
   ],
   settings: SHARED_SETTINGS,
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
 })
 
-scenario('shared file only imported by files in one directory raises false-sharing error', rule, {
+scenario('exported symbol has two distinct consumers', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-    { path: 'src/featureA/consumerB.ts', content: "import { x } from '../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Card = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Card } from '@/ui/components'" },
+    { path: 'src/feature-b/screen.ts', content: "import { Card } from '@/ui/components'" },
   ],
   settings: SHARED_SETTINGS,
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
-  errors: [{ messageId: 'notTrulyShared' }],
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Card = 1',
 })
 
-scenario('test files count as consumers — one non-test dir plus two test dirs has no error', rule, {
+scenario('exported symbol has one consumer group', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-    { path: 'src/featureB/consumer.test.ts', content: "import { x } from '../shared'" },
-    { path: 'src/featureC/consumer.test.ts', content: "import { x } from '../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
   settings: SHARED_SETTINGS,
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
+  errors: [
+    {
+      message:
+        'symbol "Button" has 1 consumer group(s) (group: feature-a) -> Must be used by 2+ entities',
+    },
+  ],
 })
 
-scenario(
-  'shared file only imported by test files in one directory raises false-sharing error',
-  rule,
-  {
-    files: [
-      TSCONFIG,
-      { path: 'src/shared/index.ts', content: 'export const x = 1' },
-      { path: 'src/featureA/consumerA.test.ts', content: "import { x } from '../shared'" },
-      { path: 'src/featureA/consumerB.test.ts', content: "import { x } from '../shared'" },
-    ],
-    settings: SHARED_SETTINGS,
-    filename: 'src/shared/index.ts',
-    code: 'export const x = 1',
-    errors: [{ messageId: 'notTrulyShared' }],
-  },
-)
-
-scenario('different subdirectories within a top-level folder count as distinct consumers', rule, {
+scenario('single-consumer symbol report includes consumer group', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/rules/import-control/consumer.ts', content: "import { x } from '../../shared'" },
-    { path: 'src/rules/export-control/consumer.ts', content: "import { x } from '../../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Input = 1' },
+    { path: 'src/feature-a/form.ts', content: "import { Input } from '@/ui/components'" },
   ],
   settings: SHARED_SETTINGS,
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Input = 1',
+  errors: [
+    {
+      message:
+        'symbol "Input" has 1 consumer group(s) (group: feature-a) -> Must be used by 2+ entities',
+    },
+  ],
+})
+
+scenario('zero-consumer symbol report indicates no consumers', rule, {
+  files: [TSCONFIG, { path: 'src/ui/components/index.ts', content: 'export const Toast = 1' }],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Toast = 1',
+  errors: [
+    {
+      message:
+        'symbol "Toast" has 0 consumer group(s) (no consumers found) -> Must be used by 2+ entities',
+    },
+  ],
+})
+
+scenario('type-only imports satisfy sharing threshold', rule, {
+  files: [
+    TSCONFIG,
+    {
+      path: 'src/ui/components/types.ts',
+      content: 'export type ButtonProps = { label: string }',
+    },
+    {
+      path: 'src/feature-a/screen.ts',
+      content:
+        "import type { ButtonProps } from '@/ui/components/types'\nconst value: ButtonProps = { label: 'a' }\nvoid value",
+    },
+    {
+      path: 'src/feature-b/screen.ts',
+      content:
+        "import type { ButtonProps } from '@/ui/components/types'\nconst value: ButtonProps = { label: 'b' }\nvoid value",
+    },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/types.ts',
+  code: 'export type ButtonProps = { label: string }',
 })
 
 scenario('missing sourceRoot in settings fails gracefully without reporting', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { architecture: { shared: { shared: true } } } },
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
+  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
 })
 
 scenario('missing architecture settings fails gracefully without reporting', rule, {
   files: [
     TSCONFIG,
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
   settings: { unslop: { sourceRoot: 'src' } },
-  filename: 'src/shared/index.ts',
-  code: 'export const x = 1',
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
 })
