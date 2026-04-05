@@ -16,8 +16,7 @@ const rule: Rule.RuleModule = {
     },
     schema: [],
     messages: {
-      exportAllForbidden:
-        'Export denied: export * is not allowed when exports policy is configured.',
+      exportAllForbidden: 'Export denied: export * is not allowed in module entrypoints.',
       symbolDenied:
         'Export denied: symbol "{{symbol}}" does not match configured exports patterns.',
       invalidExportRegex: 'Configuration error: invalid exports pattern "{{pattern}}"',
@@ -64,8 +63,7 @@ function buildRuleState(context: Rule.RuleContext, filename: string): RuleState 
   if (moduleMatch === undefined) return undefined
 
   const hasExportContract = moduleMatch.policy.exports.length > 0
-  const shouldForbidExportAll = moduleMatch.policy.shared || hasExportContract
-  if (!shouldForbidExportAll) return undefined
+  const shouldForbidExportAll = true
   if (!hasExportContract) return { shouldForbidExportAll }
 
   const built = buildPatterns(moduleMatch.policy.exports)

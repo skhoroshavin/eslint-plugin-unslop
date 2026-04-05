@@ -48,7 +48,7 @@ This turns on:
 | Rule                         | Severity | What it does                                                           |
 | ---------------------------- | -------- | ---------------------------------------------------------------------- |
 | `unslop/import-control`      | error    | Enforces boundaries and forbids local namespace imports                |
-| `unslop/export-control`      | error    | Restricts export patterns and forbids `export *` in shared entrypoints |
+| `unslop/export-control`      | error    | Restricts export patterns and forbids `export *` in module entrypoints |
 | `unslop/no-false-sharing`    | error    | Flags shared entrypoint symbols with fewer than two consumer groups    |
 | `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors    |
 | `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                        |
@@ -116,7 +116,7 @@ export default [
 
 The customs declaration form for the other direction: what are you actually exporting from your module's public entrypoints?
 
-When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually. For modules marked `shared: true`, `export * from ...` is rejected in `index.ts` and `types.ts` so symbol provenance stays explicit.
+When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually. Regardless of module policy, `export * from ...` is rejected in `index.ts` and `types.ts` so symbol provenance stays explicit.
 
 ### `unslop/no-false-sharing`
 

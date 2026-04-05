@@ -141,13 +141,13 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 - **WHEN** a same-module relative import reaches two or more levels deeper
 - **THEN** `unslop/import-control` MUST report an error
 
-### Requirement: Export control SHALL forbid export-all on shared module entrypoints
+### Requirement: Export control SHALL forbid export-all on module entrypoints
 
-`unslop/export-control` MUST reject `export * from ...` in `index.ts` and `types.ts` for modules marked `shared: true`.
+`unslop/export-control` MUST reject `export * from ...` in `index.ts` and `types.ts` for all modules.
 
-#### Scenario: Shared entrypoint uses export-all
+#### Scenario: Entrypoint uses export-all
 
-- **WHEN** `index.ts` or `types.ts` of a shared module contains `export * from ...`
+- **WHEN** `index.ts` or `types.ts` contains `export * from ...`
 - **THEN** `unslop/export-control` MUST report an error
 
 ### Requirement: Export control SHALL enforce optional symbol contracts on module entrypoints
