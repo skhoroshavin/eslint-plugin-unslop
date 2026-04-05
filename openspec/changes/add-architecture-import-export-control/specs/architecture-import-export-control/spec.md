@@ -16,7 +16,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 
-`unslop/import-control` MUST treat cross-module imports as forbidden unless the importer module explicitly allows the target module via `imports`.
+`unslop/import-control` MUST treat cross-module imports as forbidden unless the importer module explicitly allows the target module via `imports`, or the import is implicitly allowed as a shallow relative entrypoint import (see below).
 
 #### Scenario: Allowed cross-module edge
 
@@ -25,7 +25,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 #### Scenario: Undeclared cross-module edge
 
-- **WHEN** importer module policy does not include target module matcher in `imports`
+- **WHEN** importer module policy does not include target module matcher in `imports`, and the import is not a shallow relative entrypoint import
 - **THEN** `unslop/import-control` MUST report an error
 
 #### Scenario: Unmatched module edge
@@ -37,19 +37,33 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 `unslop/import-control` MUST allow cross-module imports only when the import target resolves to `index.ts` or `types.ts` in the target module.
 
-#### Scenario: Cross-module import targets entrypoint
+#### Scenario: Cross-module import targets entrypoint via explicit policy
 
-- **WHEN** a cross-module import resolves to `index.ts` or `types.ts`
-- **THEN** `unslop/import-control` MUST allow the import if module boundary policy also allows the edge
+- **WHEN** a cross-module import resolves to `index.ts` or `types.ts` and the importer module policy explicitly allows the target module in `imports`
+- **THEN** `unslop/import-control` MUST allow the import
 
 #### Scenario: Cross-module import targets internal file
 
 - **WHEN** a cross-module import resolves to any file other than `index.ts` or `types.ts`
 - **THEN** `unslop/import-control` MUST report an error
 
+### Requirement: Import control SHALL implicitly allow shallow relative imports to direct child entrypoints
+
+`unslop/import-control` MUST allow a `./`-relative import that is at most one level deep and resolves to a public entrypoint (`index.ts` or `types.ts`), without requiring an explicit `imports` policy entry. This allows a module to import the public entrypoint of any direct child sub-module without boilerplate configuration.
+
+#### Scenario: Shallow relative import to child module entrypoint
+
+- **WHEN** a file uses a `./`-relative import that is one level deep and resolves to `index.ts` or `types.ts`
+- **THEN** `unslop/import-control` MUST allow the import regardless of `imports` policy
+
+#### Scenario: Shallow relative import to child module non-entrypoint
+
+- **WHEN** a file uses a `./`-relative import that is one level deep but resolves to a file other than `index.ts` or `types.ts`
+- **THEN** `unslop/import-control` MUST apply normal boundary checks
+
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
 
-`unslop/import-control` MUST enforce shallow same-module relative imports by allowing at most one level deeper path traversal within the same module instance.
+`unslop/import-control` MUST enforce shallow relative imports within the same module instance by allowing at most one level deeper path traversal.
 
 #### Scenario: Same-module import one level deep
 

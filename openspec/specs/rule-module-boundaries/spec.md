@@ -44,16 +44,21 @@ Test files inside `src/rules/<rule>/` MUST treat the rule as a black-box module.
 
 ### Requirement: Architecture boundaries SHALL be enforced by an allowlist-style dependency policy
 
-The repository SHALL define dependency-cruiser rules as readable allowlists using `allowed` rules (not blacklist-style inversion) that describe the allowed dependencies for the plugin entrypoint, rule registry, rule implementation files, rule tests, and utility files under `src/utils`. Any undeclared dependency edge affecting these areas MUST fail validation.
+The repository SHALL define architecture boundary rules through `eslint-plugin-unslop` using a shared policy at `settings.unslop.architecture`. The policy SHALL use readable module-keyed `imports` allowlists and optional `exports` contracts to describe allowed dependencies and public APIs for plugin entrypoint, rule registry, rule implementation files, rule tests, and utility files under `src/utils`. Any undeclared dependency edge affecting these areas MUST fail validation.
 
 #### Scenario: Declared allowed import
 
-- **WHEN** a file imports a dependency that is listed in its allowlist zone
+- **WHEN** a file imports a dependency edge that is listed in the import-control allowlist for its module
 - **THEN** architecture validation MUST allow the import
 
 #### Scenario: Undeclared import edge
 
-- **WHEN** a file imports a dependency that is not listed in its allowlist zone
+- **WHEN** a file imports a dependency edge that is not listed in the import-control allowlist for its module
+- **THEN** architecture validation MUST fail
+
+#### Scenario: Cross-module import bypasses public entrypoint
+
+- **WHEN** a file imports another module through a non-entrypoint file
 - **THEN** architecture validation MUST fail
 
 #### Scenario: Utility file imports from a rule module
@@ -61,19 +66,19 @@ The repository SHALL define dependency-cruiser rules as readable allowlists usin
 - **WHEN** a file under `src/utils/` imports from `src/rules/`
 - **THEN** architecture validation MUST fail
 
-#### Scenario: Allowlist rules are human-readable
+#### Scenario: Module policy is human-readable
 
-- **WHEN** dependency-cruiser allowlist rules are defined
-- **THEN** each allowlist rule MUST include a human-readable identifier (for example, a comment label)
+- **WHEN** architecture policy is defined in ESLint settings
+- **THEN** module keys and their `imports` / `exports` clauses MUST remain readable without inversion-style deny exceptions
 
 ### Requirement: Architecture validation SHALL be wired through existing repository scripts
 
-The repository SHALL run dependency-cruiser as part of existing validation scripts, without adding standalone helper scripts solely for architecture checks.
+The repository SHALL run architecture validation as part of existing lint/verification scripts by executing ESLint with architecture rules enabled, without adding standalone helper scripts solely for architecture checks.
 
 #### Scenario: Running repository verification
 
 - **WHEN** `npm run verify` is executed
-- **THEN** dependency-cruiser architecture validation MUST run as part of that script
+- **THEN** architecture validation MUST run as part of that script through ESLint rule execution
 
 ### Requirement: Repository self-linting SHALL treat shared areas as directory-based cohesion units
 

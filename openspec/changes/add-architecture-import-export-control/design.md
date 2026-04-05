@@ -64,10 +64,11 @@ Alternatives considered:
 
 Decision:
 
-- Cross-module imports are forbidden unless importer policy explicitly allows target module in `imports`.
+- Cross-module imports are forbidden unless the importer policy explicitly allows the target module in `imports`, or the import qualifies as a shallow relative entrypoint import (see below).
+- A `./`-relative import that is at most one level deep and resolves to a public entrypoint (`index.ts` or `types.ts`) is implicitly allowed without an explicit `imports` entry. This lets a module import any direct child sub-module's public entrypoint without boilerplate config.
 - If importer or importee cannot be matched to any architecture key, report violation.
-- Same-module imports are allowed with shallow depth only (at most one level deeper), replacing separate deep-import enforcement for covered files.
-- Cross-module imports must target `index.ts` or `types.ts` in the target module.
+- Same-module imports (same matched instance) are allowed with shallow depth only (at most one level deeper), replacing separate deep-import enforcement for covered files.
+- Cross-module imports that are not implicitly allowed must target `index.ts` or `types.ts` in the target module.
 
 Rationale:
 

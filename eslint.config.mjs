@@ -12,6 +12,17 @@ export default [
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          'rules/*': {
+            imports: ['utils', 'utils/test-fixtures'],
+            exports: ['^default$'],
+          },
+        },
+      },
+    },
     languageOptions: {
       globals: globals.node,
     },
@@ -22,6 +33,8 @@ export default [
       'max-lines-per-function': ['error', { max: 50 }],
       'max-lines': ['error', { max: 600 }],
       'unslop/read-friendly-order': ['error'],
+      'unslop/import-control': ['error'],
+      'unslop/export-control': ['error'],
       'no-restricted-syntax': [
         'error',
         {
@@ -35,30 +48,6 @@ export default [
     files: ['src/**/*.test.ts'],
     rules: {
       complexity: ['error', { max: 1 }],
-    },
-  },
-  {
-    files: ['src/**/*.ts'],
-    settings: {
-      unslop: {
-        sourceRoot: 'src',
-        architecture: {
-          'index.ts': {
-            imports: ['rules/index.ts'],
-          },
-          'rules/index.ts': {
-            imports: ['rules/*'],
-          },
-          'rules/*': {
-            imports: ['utils', 'utils/test-fixtures'],
-            exports: ['^default$'],
-          },
-        },
-      },
-    },
-    rules: {
-      'unslop/import-control': 'error',
-      'unslop/export-control': 'error',
     },
   },
 ]

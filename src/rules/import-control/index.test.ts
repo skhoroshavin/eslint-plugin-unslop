@@ -51,6 +51,45 @@ test('rejects imports to non-entrypoint files across modules', () => {
   })
 })
 
+test('implicitly allows shallow relative import to child module entrypoint', () => {
+  ruleTester.run('import-control', rule, {
+    valid: [
+      {
+        // index.ts imports ./rules/index.ts — different architecture modules,
+        // but ./relative and ≤1 level deep targeting an entrypoint: implicitly allowed
+        filename: fixture.filePath('src/index.ts'),
+        code: "import rules from './rules/index.ts'",
+        settings: {
+          unslop: {
+            sourceRoot: 'src',
+            architecture: {
+              'index.ts': { imports: [] },
+              'rules/index.ts': { imports: [] },
+            },
+          },
+        },
+      },
+    ],
+    invalid: [
+      {
+        // Shallow relative import to a non-entrypoint across module boundary: denied
+        filename: fixture.filePath('src/index.ts'),
+        code: "import x from './rules/internal.ts'",
+        settings: {
+          unslop: {
+            sourceRoot: 'src',
+            architecture: {
+              'index.ts': { imports: [] },
+              rules: { imports: [] },
+            },
+          },
+        },
+        errors: [{ messageId: 'notAllowed' }],
+      },
+    ],
+  })
+})
+
 test('enforces shallow same-module relative depth', () => {
   ruleTester.run('import-control', rule, {
     valid: [
@@ -88,6 +127,9 @@ const baseSettings = {
 const fixture = new ProjectFixture({
   prefix: 'import-control-test-',
   files: [
+    { path: 'src/index.ts' },
+    { path: 'src/rules/index.ts' },
+    { path: 'src/rules/internal.ts' },
     { path: 'src/repository/user/service.ts' },
     { path: 'src/repository/user/index.ts' },
     { path: 'src/repository/user/helpers/index.ts' },

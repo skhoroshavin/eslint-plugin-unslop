@@ -102,6 +102,8 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
+  if (isShallowRelativeEntrypoint(specifier, targetFile)) return
+
   if (!allowsImport(importer.policy, importee.matcher)) {
     context.report({
       node,
@@ -113,6 +115,12 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
+}
+
+function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {
+  return (
+    !isRelativeTooDeep(specifier) && specifier.startsWith('./') && isPublicEntrypoint(targetFile)
+  )
 }
 
 interface EdgeCheckOptions {
