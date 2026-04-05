@@ -1,24 +1,31 @@
-import node_path from 'node:path'
 import node_fs from 'node:fs'
+import node_path from 'node:path'
 import type { Rule } from 'eslint'
+import type { ExportNamedDeclaration, Program } from 'estree'
 import {
+  getDeclarationNamesFromExport,
   isPublicEntrypoint,
-  readArchitecturePolicy,
   matchFileToArchitectureModule,
   normalizePath,
+  readArchitecturePolicy,
   resolveImportTarget,
 } from '../../utils/index.js'
+
+const MIN_CONSUMER_GROUPS = 2
+
+const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
 
 const rule: Rule.RuleModule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: 'Disallow shared files that are only used by one consumer',
+      description: 'Disallow shared entrypoint symbols that are only used by one consumer group',
       recommended: false,
     },
     schema: [],
     messages: {
-      notTrulyShared: 'only used by: {{consumers}} -> Must be used by 2+ entities',
+      notTrulyShared:
+        'symbol "{{symbol}}" has {{consumerCount}} consumer group(s){{consumerGroup}} -> Must be used by 2+ entities',
     },
   },
   create(context) {
@@ -29,8 +36,7 @@ const rule: Rule.RuleModule = {
     if (policy === undefined) return {}
 
     const matched = matchFileToArchitectureModule(filename, policy)
-    if (matched === undefined) return {}
-    if (!matched.policy.shared) return {}
+    if (matched === undefined || !matched.policy.shared) return {}
     if (!isPublicEntrypoint(filename)) return {}
 
     const sourceRoot = policy.sourceRoot
@@ -42,113 +48,245 @@ const rule: Rule.RuleModule = {
 
     return {
       Program(node) {
-        const consumers = findConsumers(filename, sourceDir)
-        if (consumers !== undefined) {
-          context.report({ node, messageId: 'notTrulyShared', data: { consumers } })
-        }
+        reportUnsharedSymbols(context, node, {
+          entrypointFile: filename,
+          sourceDir,
+          sourceRoot,
+        })
       },
     }
   },
 }
 
-function deriveProjectRoot(filename: string, sourceRoot: string | undefined): string | undefined {
-  const normalized = normalizePath(filename)
-  if (sourceRoot === undefined) return undefined
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  return normalized.slice(0, index)
+function reportUnsharedSymbols(
+  context: Rule.RuleContext,
+  node: Program,
+  options: SymbolAnalysisOptions,
+): void {
+  const exportedSymbols = collectExportedSymbols(node)
+  if (exportedSymbols.length === 0) return
+
+  const consumerGroupsBySymbol = findConsumerGroupsBySymbol(
+    options.entrypointFile,
+    options.sourceDir,
+    options.sourceRoot,
+    exportedSymbols,
+  )
+
+  for (const symbol of exportedSymbols) {
+    const consumerGroups = consumerGroupsBySymbol.get(symbol)
+    if (consumerGroups !== undefined && consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
+    const groups = consumerGroups ?? new Set<string>()
+    context.report({
+      node,
+      messageId: 'notTrulyShared',
+      data: {
+        symbol,
+        consumerCount: String(groups.size),
+        consumerGroup: getSingleConsumerGroup(groups),
+      },
+    })
+  }
 }
 
-function findConsumers(filename: string, sourceDir: string): string | undefined {
-  const importers = findImporters(filename, sourceDir)
-  const entities = new Set(importers.map((f) => getEntityName(f, sourceDir)))
-  if (entities.size < 2) return [...entities].join(', ')
-  return undefined
+function collectExportedSymbols(program: Program): string[] {
+  const symbols = new Set<string>()
+  for (const statement of program.body) {
+    if (statement.type !== 'ExportNamedDeclaration') continue
+    addSymbolsFromExportNamed(statement, symbols)
+  }
+  return [...symbols]
 }
 
-function getEntityName(importerPath: string, sourceDir: string): string {
-  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
-  const parts = rel.split('/')
-  if (parts.length <= 1) return rel
-  return parts.slice(0, -1).join('/')
+function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<string>): void {
+  for (const specifier of node.specifiers) {
+    if (specifier.exported.type !== 'Identifier') continue
+    symbols.add(specifier.exported.name)
+  }
+  if (node.declaration === null || node.declaration === undefined) return
+  for (const name of getDeclarationNamesFromExport(node.declaration)) {
+    symbols.add(name)
+  }
 }
 
-function findImporters(targetPath: string, sourceDir: string): string[] {
-  const results: string[] = []
-  scanDir(sourceDir, targetPath, results)
-  return results
+function findConsumerGroupsBySymbol(
+  entrypointFile: string,
+  sourceDir: string,
+  sourceRoot: string,
+  exportedSymbols: string[],
+): Map<string, Set<string>> {
+  const bySymbol = new Map<string, Set<string>>()
+  for (const symbol of exportedSymbols) {
+    bySymbol.set(symbol, new Set<string>())
+  }
+
+  const importers = findImporters(entrypointFile, sourceDir, sourceRoot, new Set(exportedSymbols))
+  for (const importer of importers) {
+    const consumerGroup = getConsumerGroup(importer.filePath, sourceDir)
+    for (const symbol of importer.symbols) {
+      bySymbol.get(symbol)?.add(consumerGroup)
+    }
+  }
+  return bySymbol
 }
 
-function scanDir(dir: string, targetPath: string, results: string[]): void {
+function findImporters(
+  entrypointFile: string,
+  sourceDir: string,
+  sourceRoot: string,
+  exportedSymbols: Set<string>,
+): SymbolImporter[] {
+  const options: ConsumerScanOptions = {
+    entrypointFile,
+    sourceRoot,
+    exportedSymbols,
+    importers: [],
+  }
+  scanDir(sourceDir, options)
+  return options.importers
+}
+
+function scanDir(dir: string, options: ConsumerScanOptions): void {
   let entries: node_fs.Dirent[]
   try {
     entries = node_fs.readdirSync(dir, { withFileTypes: true })
   } catch {
     return
   }
+
   for (const entry of entries) {
-    const full = node_path.join(dir, entry.name)
+    const fullPath = node_path.join(dir, entry.name)
     if (entry.isDirectory()) {
-      scanDirEntry(entry, full, targetPath, results)
-    } else {
-      scanFileEntry(entry, full, targetPath, results)
+      scanDirectoryEntry(fullPath, options)
+      continue
     }
+    scanFileEntry(fullPath, options)
   }
 }
 
-function scanDirEntry(
-  entry: node_fs.Dirent,
-  full: string,
-  targetPath: string,
-  results: string[],
-): void {
-  if (entry.name === 'node_modules' || entry.name === '.git') return
-  scanDir(full, targetPath, results)
+function scanDirectoryEntry(directoryPath: string, options: ConsumerScanOptions): void {
+  const baseName = node_path.basename(directoryPath)
+  if (baseName === 'node_modules' || baseName === '.git') return
+  scanDir(directoryPath, options)
 }
 
-function scanFileEntry(
-  entry: node_fs.Dirent,
-  full: string,
-  targetPath: string,
-  results: string[],
-): void {
-  if (!/\.[jt]sx?$/.test(entry.name)) return
-  if (full === targetPath) return
-  if (importsTarget(full, targetPath)) {
-    results.push(full)
-  }
+function scanFileEntry(filePath: string, options: ConsumerScanOptions): void {
+  if (!isSourceFile(filePath)) return
+  if (normalizePath(filePath) === normalizePath(options.entrypointFile)) return
+
+  const symbols = getImportedSymbols(
+    filePath,
+    options.entrypointFile,
+    options.sourceRoot,
+    options.exportedSymbols,
+  )
+  if (symbols.length === 0) return
+  options.importers.push({ filePath, symbols })
 }
 
-function importsTarget(filePath: string, targetPath: string): boolean {
+function isSourceFile(filePath: string): boolean {
+  return /\.[jt]sx?$/.test(filePath)
+}
+
+function getImportedSymbols(
+  filePath: string,
+  entrypointFile: string,
+  sourceRoot: string,
+  exportedSymbols: Set<string>,
+): string[] {
   let content: string
   try {
     content = node_fs.readFileSync(filePath, 'utf-8')
   } catch {
-    return false
+    return []
   }
-  const importRe = /(?:import|from)\s+['"]([^'"]+)['"]/g
-  let m: RegExpExecArray | null
-  while ((m = importRe.exec(content)) !== null) {
-    const spec = m[1]
-    if (!spec.startsWith('.')) continue
-    const resolved = resolveImportTarget(filePath, undefined, spec)
-    if (resolved === targetPath) return true
-    if (resolved !== undefined && importsTargetIndexFromDir(resolved, targetPath)) return true
+
+  const result = new Set<string>()
+  const matcher = new RegExp(LOCAL_SOURCE_RE)
+  let match: RegExpExecArray | null
+  while ((match = matcher.exec(content)) !== null) {
+    const clause = match[1]
+    const specifier = match[2]
+    const resolvedTarget = resolveImportTarget(filePath, sourceRoot, specifier)
+    if (!isSamePath(resolvedTarget, entrypointFile)) continue
+    const names = extractNamedSymbols(clause)
+    for (const name of names) {
+      if (!exportedSymbols.has(name)) continue
+      result.add(name)
+    }
   }
-  return false
+  return [...result]
 }
 
-function importsTargetIndexFromDir(resolvedPath: string, targetPath: string): boolean {
-  let stat: node_fs.Stats
-  try {
-    stat = node_fs.statSync(resolvedPath)
-  } catch {
-    return false
+function isSamePath(value: string | undefined, expected: string): boolean {
+  if (value === undefined) return false
+  return normalizePath(value) === normalizePath(expected)
+}
+
+function extractNamedSymbols(clause: string): string[] {
+  const openBrace = clause.indexOf('{')
+  if (openBrace === -1) return []
+  const closeBrace = clause.indexOf('}', openBrace + 1)
+  if (closeBrace === -1) return []
+
+  const rawList = clause.slice(openBrace + 1, closeBrace)
+  const symbols: string[] = []
+  for (const rawItem of rawList.split(',')) {
+    const symbol = parseNamedSymbol(rawItem)
+    if (symbol !== undefined) {
+      symbols.push(symbol)
+    }
   }
-  if (!stat.isDirectory()) return false
-  if (!targetPath.startsWith(resolvedPath + node_path.sep)) return false
-  return /^index\.[jt]sx?$/.test(node_path.basename(targetPath))
+  return symbols
+}
+
+function parseNamedSymbol(raw: string): string | undefined {
+  const trimmed = raw.trim().replace(/^type\s+/, '')
+  if (trimmed.length === 0) return undefined
+  const [left] = trimmed.split(/\s+as\s+/)
+  if (left === undefined) return undefined
+  const normalized = left.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function getConsumerGroup(importerPath: string, sourceDir: string): string {
+  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
+  const parts = rel.split('/')
+  if (parts.length <= 1) return rel
+  return parts.slice(0, -1).join('/')
+}
+
+function getSingleConsumerGroup(groups: Set<string>): string {
+  if (groups.size === 0) return ' (no consumers found)'
+  if (groups.size !== 1) return ''
+  const [single] = [...groups]
+  return ` (group: ${single})`
+}
+
+function deriveProjectRoot(filename: string, sourceRoot: string): string | undefined {
+  const normalized = normalizePath(filename)
+  const marker = `/${sourceRoot}/`
+  const index = normalized.indexOf(marker)
+  if (index === -1) return undefined
+  return normalized.slice(0, index)
+}
+
+interface SymbolImporter {
+  filePath: string
+  symbols: string[]
+}
+
+interface SymbolAnalysisOptions {
+  entrypointFile: string
+  sourceDir: string
+  sourceRoot: string
+}
+
+interface ConsumerScanOptions {
+  entrypointFile: string
+  sourceRoot: string
+  exportedSymbols: Set<string>
+  importers: SymbolImporter[]
 }
 
 export default rule

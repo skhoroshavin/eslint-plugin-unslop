@@ -16,7 +16,7 @@ export default [
       unslop: {
         sourceRoot: 'src',
         architecture: {
-          utils: { shared: true },
+          utils: {},
           'rules/*': {
             imports: ['utils', 'utils/test-fixtures'],
             exports: ['^default$'],

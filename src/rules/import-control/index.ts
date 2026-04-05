@@ -20,6 +20,8 @@ const rule: Rule.RuleModule = {
     messages: {
       notAllowed: 'Import denied: module {{from}} cannot import module {{to}}.',
       nonEntrypoint: 'Import denied: cross-module imports must target index.ts or types.ts.',
+      namespaceLocalForbidden:
+        'Import denied: local cross-module namespace imports are not allowed.',
       tooDeep: 'Import denied: same-module relative imports can only go one level deeper.',
     },
   },
@@ -102,6 +104,11 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
+  if (isLocalNamespaceImport(node)) {
+    context.report({ node, messageId: 'namespaceLocalForbidden' })
+    return
+  }
+
   if (isShallowRelativeEntrypoint(specifier, targetFile)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
@@ -115,6 +122,13 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
+}
+
+function isLocalNamespaceImport(
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
+): boolean {
+  if (node.type !== 'ImportDeclaration') return false
+  return node.specifiers.some((specifier) => specifier.type === 'ImportNamespaceSpecifier')
 }
 
 function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {

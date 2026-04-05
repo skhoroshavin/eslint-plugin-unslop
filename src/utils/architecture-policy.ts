@@ -261,7 +261,22 @@ export function normalizePath(pathValue: string): string {
 function resolveExistingFile(basePath: string): string | undefined {
   const candidates = buildCandidates(basePath)
   for (const candidate of candidates) {
-    if (node_fs.existsSync(candidate)) return candidate
+    const resolved = resolveCandidate(candidate)
+    if (resolved !== undefined) return resolved
+  }
+  return undefined
+}
+
+function resolveCandidate(candidate: string): string | undefined {
+  if (!node_fs.existsSync(candidate)) return undefined
+  const stat = node_fs.statSync(candidate)
+  if (stat.isFile()) return candidate
+  if (!stat.isDirectory()) return undefined
+  for (const extension of FILE_EXTENSIONS.slice(1)) {
+    const indexPath = node_path.join(candidate, `index${extension}`)
+    if (!node_fs.existsSync(indexPath)) continue
+    const indexStat = node_fs.statSync(indexPath)
+    if (indexStat.isFile()) return indexPath
   }
   return undefined
 }
