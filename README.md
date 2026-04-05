@@ -135,38 +135,6 @@ The customs declaration form for the other direction: what are you actually expo
 
 When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern — otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually.
 
-### `unslop/no-deep-imports` (Deprecated)
-
-Use `unslop/import-control` instead — it does everything this rule does and more, with an explicit architecture policy behind it.
-
-Forbids importing more than one level deeper than the current file within the same top-level folder. If `features/auth/login.ts` imports from `features/auth/validators/internal/format.ts`, that's reaching too deep into implementation details. This rule nudges you toward flatter structures and proper module boundaries.
-
-Only triggers for imports within the same top-level folder. External packages and imports into other top-level folders are ignored.
-
-#### Options
-
-```js
-;['error', { sourceRoot: 'src' }]
-```
-
-| Option       | Type     | Default       | Description                               |
-| ------------ | -------- | ------------- | ----------------------------------------- |
-| `sourceRoot` | `string` | auto-detected | Source directory relative to project root |
-
-#### Examples
-
-Given a project with `sourceRoot: 'src'`:
-
-```js
-// File: src/features/auth/login.ts
-
-// OK — one level deep, same folder
-import { validate } from './validators/email.js'
-
-// Bad — two levels deep into same top-level folder
-import { format } from './validators/internal/format.js'
-```
-
 ### `unslop/no-false-sharing`
 
 **Requires TypeScript parser with program**
