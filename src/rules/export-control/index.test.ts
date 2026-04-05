@@ -79,6 +79,23 @@ test('rejects export-all in constrained entrypoint', () => {
   })
 })
 
+test('fails gracefully when architecture settings are missing', () => {
+  ruleTester.run('export-control', rule, {
+    valid: [
+      {
+        filename: '/repo/src/repository/user/index.ts',
+        code: 'export const helper = 1',
+        settings: {
+          unslop: {
+            sourceRoot: 'src',
+          },
+        },
+      },
+    ],
+    invalid: [],
+  })
+})
+
 const constrainedSettings = {
   unslop: {
     sourceRoot: 'src',

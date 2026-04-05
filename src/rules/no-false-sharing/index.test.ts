@@ -39,6 +39,20 @@ test('shared file without sourceRoot fails gracefully and reports nothing', () =
   })
 })
 
+test('shared file without architecture settings fails gracefully and reports nothing', () => {
+  fixture.write(SHARED_UTIL, EXPORT_X)
+  fixture.write(FEATURE_A_CONSUMER_A, IMPORT_FROM_SHARED)
+
+  makeTsRuleTester({
+    unslop: {
+      sourceRoot: 'src',
+    },
+  }).run('no-false-sharing', rule, {
+    valid: [{ code: fixture.read(SHARED_UTIL), filename: fixture.filePath(SHARED_UTIL) }],
+    invalid: [],
+  })
+})
+
 describe('dir-mode', () => {
   beforeEach(() => {
     fixture.write(SHARED_UTIL, EXPORT_X)

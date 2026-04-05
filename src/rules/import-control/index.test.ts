@@ -110,6 +110,23 @@ test('enforces shallow same-module relative depth', () => {
   })
 })
 
+test('fails gracefully when architecture settings are missing', () => {
+  ruleTester.run('import-control', rule, {
+    valid: [
+      {
+        filename: fixture.filePath('src/models/user/index.ts'),
+        code: "import { createUserRepo } from '../../repository/user/index.ts'",
+        settings: {
+          unslop: {
+            sourceRoot: 'src',
+          },
+        },
+      },
+    ],
+    invalid: [],
+  })
+})
+
 const baseSettings = {
   unslop: {
     sourceRoot: 'src',
