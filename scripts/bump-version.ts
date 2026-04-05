@@ -3,7 +3,7 @@ import path from 'node:path'
 import { execSync } from 'node:child_process'
 
 const ROOT = path.join(import.meta.dirname, '..')
-const BUMP_ARGS = ['major', 'minor', 'patch'] as const
+const BUMP_ARGS: readonly ['major', 'minor', 'patch'] = ['major', 'minor', 'patch']
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)$/
 const PKG_PATH = path.join(ROOT, 'package.json')
 const LOCK_PATH = path.join(ROOT, 'package-lock.json')

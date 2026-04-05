@@ -38,7 +38,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          npx tsx scripts/bump-version.ts ${{ inputs.bump }}
+          ./node_modules/.bin/tsx scripts/bump-version.ts ${{ inputs.bump }}
           TAG="v$(node -p "require('./package.json').version")"
           git tag -a "$TAG" -m "$TAG"
           git push origin main --follow-tags

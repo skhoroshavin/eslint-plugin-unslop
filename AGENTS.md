@@ -149,3 +149,17 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 - Run the most targeted test command first.
 - Then run broader checks as needed (`npm run verify`, then `npm run test`).
 - Use `npm run fix` to apply autofixes before final verification when lint/format issues appear.
+
+## Pre-Push Checklist (Mandatory)
+
+Before pushing any branch or creating a PR, **always** run these in order:
+
+1. `npm run fix` — auto-fixes lint, format, and unused import issues; address anything it cannot auto-fix
+2. `npm run verify` — full pipeline (prettier, knip, jscpd, tsc, tsup, eslint); must exit clean
+3. `npm run test` — all tests must pass
+
+Common pitfalls to watch for:
+
+- `knip` flags binaries referenced in workflow files (e.g. `tsx`) if they are not in `devDependencies` — add them
+- The `no-restricted-syntax` ESLint rule bans **all** `TSAsExpression`, including `as const`; use explicit tuple/readonly types instead (e.g. `const X: readonly ['a', 'b'] = ['a', 'b']`)
+- New files in `scripts/` are linted and knip-checked; they must satisfy all the same rules as `src/`
