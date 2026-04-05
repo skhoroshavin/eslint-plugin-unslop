@@ -1,7 +1,3 @@
-## Purpose
-
-TBD.
-
 ## ADDED Requirements
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings

@@ -39,12 +39,12 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 ## Running A Single Test (Important)
 
-- Single file: `npm run test -- src/rules/no-deep-imports/index.test.ts`
-- Another file example: `npm run test -- src/rules/no-special-unicode/index.test.ts`
+- Single file: `npm run test -- src/rules/no-special-unicode/index.test.ts`
+- Another file example: `npm run test -- src/rules/import-control/index.test.ts`
 - Autofix-specific file: `npm run test -- src/rules/read-friendly-order/autofix.test.ts`
-- Single test name across suite: `npm run test -- -t "two levels deep within same folder is blocked"`
-- Single file + test name: `npx vitest run src/rules/no-deep-imports/index.test.ts -t "two levels deep within same folder is blocked"`
-- Watch one file: `npx vitest src/rules/no-deep-imports/index.test.ts`
+- Single test name across suite: `npm run test -- -t "cross-module import is blocked"`
+- Single file + test name: `npx vitest run src/rules/import-control/index.test.ts -t "cross-module import is blocked"`
+- Watch one file: `npx vitest src/rules/import-control/index.test.ts`
 
 ## Repository Layout
 
@@ -103,7 +103,7 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 ## Naming Conventions
 
-- Rule file and rule id naming: kebab-case (for example, `no-deep-imports`).
+- Rule file and rule id naming: kebab-case (for example, `import-control`).
 - Variables/functions: camelCase.
 - Types/interfaces: PascalCase.
 - Symbolic constants: UPPER_SNAKE_CASE.
