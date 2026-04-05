@@ -1,4 +1,4 @@
-name: PR Gate
+name: Test
 
 on:
   pull_request:
@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  pr-gate:
-    name: PR Gate
+  test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
