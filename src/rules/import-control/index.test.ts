@@ -18,6 +18,21 @@ scenario('cross-module import declared in the allowlist is allowed', rule, {
   code: "import { UserModel } from '../../models/user/index.ts'",
 })
 
+scenario('cross-module alias import to entrypoint declared in the allowlist is allowed', rule, {
+  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import { UserModel } from '@/models/user/index.ts'",
+})
+
 scenario('cross-module import not declared in the allowlist is reported', rule, {
   files: [{ path: 'src/repository/user/index.ts' }, { path: 'src/models/user/index.ts' }],
   settings: {
@@ -149,6 +164,25 @@ scenario('same-module relative import two levels deep is reported', rule, {
   },
   filename: 'src/repository/user/index.ts',
   code: "import { helper } from './helpers/internal/index.ts'",
+  errors: [{ messageId: 'tooDeep' }],
+})
+
+scenario('same-module alias import two levels deep is reported', rule, {
+  files: [
+    { path: 'src/repository/user/index.ts' },
+    { path: 'src/repository/user/helpers/internal/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/repository/user/index.ts',
+  code: "import { helper } from '@/repository/user/helpers/internal/index.ts'",
   errors: [{ messageId: 'tooDeep' }],
 })
 
