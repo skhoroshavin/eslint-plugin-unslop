@@ -65,10 +65,10 @@ const SHARED_SETTINGS = {
 }
 
 const EXPORT_X = 'export const x = 1'
-const IMPORT_FROM_SHARED = "import { x } from '../shared/util'"
+const IMPORT_FROM_SHARED = "import { x } from '../shared'"
 const IMPORT_FROM_FEATURE_A = "import { x } from '../featureA/util'"
 
-const SHARED_UTIL = 'src/shared/util.ts'
+const SHARED_UTIL = 'src/shared/index.ts'
 const FEATURE_A_UTIL = 'src/featureA/util.ts'
 const FEATURE_A_CONSUMER_A = 'src/featureA/consumerA.ts'
 const FEATURE_A_CONSUMER_B = 'src/featureA/consumerB.ts'

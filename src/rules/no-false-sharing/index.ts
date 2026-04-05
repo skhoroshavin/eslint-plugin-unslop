@@ -2,9 +2,11 @@ import node_path from 'node:path'
 import node_fs from 'node:fs'
 import type { Rule } from 'eslint'
 import {
+  isPublicEntrypoint,
   readArchitecturePolicy,
   matchFileToArchitectureModule,
   normalizePath,
+  resolveImportTarget,
 } from '../../utils/index.js'
 
 const rule: Rule.RuleModule = {
@@ -29,6 +31,7 @@ const rule: Rule.RuleModule = {
     const matched = matchFileToArchitectureModule(filename, policy)
     if (matched === undefined) return {}
     if (!matched.policy.shared) return {}
+    if (!isPublicEntrypoint(filename)) return {}
 
     const sourceDir = deriveSourceDir(filename, policy.sourceRoot)
     if (sourceDir === undefined) return {}
@@ -64,7 +67,8 @@ function findConsumers(filename: string, sourceDir: string): string | undefined 
 function getEntityName(importerPath: string, sourceDir: string): string {
   const rel = normalizePath(node_path.relative(sourceDir, importerPath))
   const parts = rel.split('/')
-  return parts[0]
+  if (parts.length <= 1) return rel
+  return parts.slice(0, -1).join('/')
 }
 
 function isTestFile(filePath: string): boolean {
@@ -126,29 +130,26 @@ function importsTarget(filePath: string, targetPath: string): boolean {
   }
   const importRe = /(?:import|from)\s+['"]([^'"]+)['"]/g
   let m: RegExpExecArray | null
-  const fileDir = node_path.dirname(filePath)
   while ((m = importRe.exec(content)) !== null) {
     const spec = m[1]
     if (!spec.startsWith('.')) continue
-    const resolved = resolveImportTarget(fileDir, spec)
+    const resolved = resolveImportTarget(filePath, undefined, spec)
     if (resolved === targetPath) return true
+    if (resolved !== undefined && importsTargetIndexFromDir(resolved, targetPath)) return true
   }
   return false
 }
 
-function resolveImportTarget(fromDir: string, spec: string): string | null {
-  const base = node_path.resolve(fromDir, spec)
-  const extensions = ['', '.ts', '.tsx', '.js', '.jsx']
-  for (const ext of extensions) {
-    const candidate = base + ext
-    if (node_fs.existsSync(candidate)) return candidate
+function importsTargetIndexFromDir(resolvedPath: string, targetPath: string): boolean {
+  let stat: node_fs.Stats
+  try {
+    stat = node_fs.statSync(resolvedPath)
+  } catch {
+    return false
   }
-  const indexExtensions = ['.ts', '.tsx', '.js', '.jsx']
-  for (const ext of indexExtensions) {
-    const candidate = node_path.join(base, 'index' + ext)
-    if (node_fs.existsSync(candidate)) return candidate
-  }
-  return null
+  if (!stat.isDirectory()) return false
+  if (!targetPath.startsWith(resolvedPath + node_path.sep)) return false
+  return /^index\.[jt]sx?$/.test(node_path.basename(targetPath))
 }
 
 export default rule
