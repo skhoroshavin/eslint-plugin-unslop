@@ -14,14 +14,14 @@ The plugin SHALL export `configs.minimal` containing only `no-special-unicode` a
 - **WHEN** `unslop.configs.minimal` is used without any `settings.unslop` block
 - **THEN** both enabled rules MUST operate without errors or warnings about missing configuration
 
-### Requirement: Plugin SHALL expose a full config for architecture enforcement
+### Requirement: Plugin SHALL expose a full config for architecture and readability enforcement
 
-The plugin SHALL export `configs.full` that enables the complete rule suite: `no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, and `no-false-sharing`. This config is designed for projects that define `settings.unslop.architecture`.
+The plugin SHALL export `configs.full` that enables the complete rule suite: `no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`, and `read-friendly-order`. This config is designed for projects that define `settings.unslop.architecture`.
 
 #### Scenario: Full config enables all rules
 
 - **WHEN** a user spreads `unslop.configs.full` into their ESLint config
-- **THEN** all five rules (`no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`) MUST be enabled at error severity
+- **THEN** all six rules (`no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`, `read-friendly-order`) MUST be enabled at error severity
 
 #### Scenario: Full config without architecture settings is graceful
 

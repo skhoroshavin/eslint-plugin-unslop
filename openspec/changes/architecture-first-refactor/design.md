@@ -13,7 +13,7 @@ The `configs.recommended` name is misleading: it contains only the zero-config s
 - Project root derivation uses the same sourceRoot path approach as the rest of the architecture machinery
 - `file` mode consumer counting is removed; directory mode is the only mode
   - `configs.minimal` replaces `configs.recommended` (zero-config symbol fixers)
-- `configs.full` is added (architecture enforcement suite, requires `settings.unslop.architecture`)
+- `configs.full` is added (architecture enforcement plus read-friendly-order, requires `settings.unslop.architecture`)
 - README positions architecture enforcement as primary
 
 **Non-Goals:**
@@ -29,7 +29,7 @@ The `configs.recommended` name is misleading: it contains only the zero-config s
 
 **Current approach**: `findProjectRoot()` finds the last occurrence of `/<sharedDirName>/` in the filename and takes everything before it.
 
-**New approach**: When `sourceRoot` is set in the architecture policy, derive project root by finding `/<sourceRoot>/` in the absolute filename and taking everything before it. When `sourceRoot` is not set, fall back to finding the first matched module's directory name in the path (same spirit, more generalized). This is identical to how `applySourceRoot()` works in `architecture-policy.ts`.
+**New approach**: When `sourceRoot` is set in the architecture policy, derive project root by finding `/<sourceRoot>/` in the absolute filename and taking everything before it. When `sourceRoot` is not set, the rule fails gracefully and does not report for the file. This keeps behavior predictable and avoids fragile path heuristics. This is aligned with how architecture path handling relies on `sourceRoot` markers.
 
 **Why not `context.getCwd()`**: Consistency. All other architecture machinery uses path derivation from the filename. Introducing a new API surface for one rule would be inconsistent and harder to test with fixture-based tests (where `cwd` may not match the fixture path).
 
@@ -62,18 +62,18 @@ The rule takes no options. All configuration comes from `settings.unslop.archite
 ### Decision: configs.minimal and configs.full replace configs.recommended
 
 - `configs.minimal`: contains only `no-special-unicode` and `no-unicode-escape`. Zero config, safe to add to any project. Same rules as current `recommended`, new name.
-- `configs.full`: enables `import-control`, `export-control`, and `no-false-sharing` in addition to the minimal rules. Does not include `read-friendly-order` (opinionated, unrelated to architecture). Requires `settings.unslop.architecture` to be set by the user — without it the architecture rules no-op gracefully.
+- `configs.full`: enables `import-control`, `export-control`, `no-false-sharing`, and `read-friendly-order` in addition to the minimal rules. Requires `settings.unslop.architecture` to be set by the user — without it the architecture rules no-op gracefully.
 
 **Why not keep `recommended` as an alias**: Keeping it would perpetuate the misleading name. A clean break is better; the version bump signals the change.
 
-**Why `full` doesn't include `read-friendly-order`**: `read-friendly-order` is about code style, not architecture. Including it in `full` would make adopting architecture enforcement a higher-friction decision.
+**Why `full` includes `read-friendly-order`**: The full profile is the project's comprehensive strictness preset. Including readability enforcement keeps `configs.full` aligned with the documented default rule suite and current plugin behavior.
 
 ## Risks / Trade-offs
 
 - **Breaking change for `no-false-sharing` users**: Any project using `no-false-sharing` with rule options will need to migrate to `settings.unslop.architecture`. This is unavoidable given the design goal. Mitigation: clear documentation in README and changelog.
 - **`configs.recommended` rename is breaking**: Projects spreading `unslop.configs.recommended` will get a lint error after upgrading. Mitigation: document prominently, keep change in a minor or major version bump.
 - **No `file` mode**: Projects relying on file-mode consumer counting lose that capability. Given the direction toward barrel exports (where module = directory), this is acceptable. Mitigation: document removal.
-- **sourceRoot required for multi-level paths**: If a user marks `utils: { shared: true }` but has no `sourceRoot`, the project root derivation falls back to finding `utils` in the path — which may be fragile if `utils` appears multiple times. Mitigation: encourage `sourceRoot` in docs; the graceful fallback returns `undefined` and the rule no-ops rather than crashing.
+- **sourceRoot required for enforcement**: If a user marks `utils: { shared: true }` but has no `sourceRoot`, `no-false-sharing` will no-op for those files rather than attempting path heuristics. Mitigation: encourage `sourceRoot` in docs; this behavior is graceful and avoids false positives from ambiguous path matching.
 
 ## Migration Plan
 
