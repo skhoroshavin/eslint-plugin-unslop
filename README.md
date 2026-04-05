@@ -1,6 +1,6 @@
 # eslint-plugin-unslop
 
-ESLint plugin that catches common LLM-generated code smells — the kind of subtle junk that sneaks in when your LLM is feeling creative. Smart quotes, invisible unicode, spaghetti imports, dead "shared" code that nobody shares, and declarations ordered for machines instead of humans.
+ESLint plugin for architecture enforcement and code quality. Define module boundaries, control imports and exports, catch false sharing, and fix common LLM-generated code smells - all from a single shared configuration.
 
 Requires ESLint 9+ (flat config). TypeScript optional but recommended.
 
@@ -12,87 +12,67 @@ npm install --save-dev eslint-plugin-unslop
 
 ## Quick Start
 
-The recommended config enables the two most universal rules out of the box:
-
-```js
-// eslint.config.mjs
-import unslop from 'eslint-plugin-unslop'
-
-export default [unslop.configs.recommended]
-```
-
-This turns on:
-
-| Rule                        | Severity | What it does                                                        |
-| --------------------------- | -------- | ------------------------------------------------------------------- |
-| `unslop/no-special-unicode` | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
-| `unslop/no-unicode-escape`  | error    | Prefers `"©"` over `"\u00A9"`                                       |
-
-The remaining rules need explicit configuration:
+The full config enables the complete rule suite - architecture enforcement plus symbol fixers:
 
 ```js
 // eslint.config.mjs
 import unslop from 'eslint-plugin-unslop'
 
 export default [
-  unslop.configs.recommended,
+  unslop.configs.full,
   {
-    rules: {
-      'unslop/no-false-sharing': ['error', { dirs: ['shared', 'utils'] }],
-      'unslop/read-friendly-order': 'warn',
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          utils: { shared: true },
+          'repository/*': {
+            imports: ['utils', 'models/*'],
+            exports: ['^create\\w+Repo$', '^Repository[A-Z]\\w+$'],
+          },
+          'models/*': {
+            imports: ['utils'],
+          },
+          app: {
+            imports: ['*'],
+          },
+        },
+      },
     },
   },
 ]
 ```
 
+This turns on:
+
+| Rule                         | Severity | What it does                                                        |
+| ---------------------------- | -------- | ------------------------------------------------------------------- |
+| `unslop/import-control`      | error    | Enforces declared module import boundaries                          |
+| `unslop/export-control`      | error    | Restricts public exports to declared patterns                       |
+| `unslop/no-false-sharing`    | error    | Flags shared modules only used by one consumer                      |
+| `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
+| `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                     |
+| `unslop/read-friendly-order` | error    | Enforces top-down, dependency-friendly declaration order            |
+
+The `configs.minimal` config contains only the zero-config symbol fixers (`no-special-unicode` and `no-unicode-escape`). It is included automatically within `configs.full`, or can be used standalone for projects that don't need architecture enforcement:
+
+```js
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+
+export default [unslop.configs.minimal]
+```
+
 ## Rules
-
-### `unslop/no-special-unicode`
-
-**Recommended**
-
-Disallows special unicode punctuation and whitespace characters in string literals and template literals. LLMs love to sprinkle in smart quotes (`“like this”`), non-breaking spaces, and other invisible gremlins that look fine in a PR review but cause fun bugs at runtime.
-
-Caught characters include: left/right smart quotes (`“” ‘’`), non-breaking space, en/em dash, horizontal ellipsis, zero-width space, and various other exotic whitespace.
-
-```js
-// Bad — these contain invisible special characters that look normal
-const greeting = 'Hello World' // a non-breaking space (U+00A0) is hiding between the words
-const quote = 'He said “hello”' // smart double quotes (U+201C, U+201D)
-
-// Good
-const greeting = 'Hello World' // regular ASCII space
-const quote = 'He said "hello"' // plain ASCII quotes
-```
-
-Note: the bad examples above contain actual unicode characters that may be
-indistinguishable from their ASCII counterparts in your font — that's exactly
-the problem this rule catches.
-
-### `unslop/no-unicode-escape`
-
-**Recommended**
-
-Prefers actual characters over `\uXXXX` escape sequences. If your string says `\u00A9`, just write `©` — your coworkers will thank you. LLM-generated code sometimes encodes characters as escape sequences for no good reason.
-
-```js
-// Bad
-const copyright = '\u00A9 2025'
-const arrow = '\u2192'
-
-// Good
-const copyright = '© 2025'
-const arrow = '→'
-```
 
 ### `unslop/import-control`
 
-Think of this as customs control for your modules — you declare which modules are allowed to import from which, and anything undeclared gets turned away at the border.
+Think of this as customs control for your modules - you declare which modules are allowed to import from which, and anything undeclared gets turned away at the border.
 
 The rule reads from a shared policy in `settings.unslop.architecture`. It's deny-by-default for cross-module imports, which means forgetting to declare a dependency is a loud error rather than a silent free-for-all. It also enforces:
 
 - cross-module imports must arrive through the public gate (`index.ts` or `types.ts`)
-- same-module relative imports can only go one level deeper — no tunnelling into internals
+- same-module relative imports can only go one level deeper - no tunnelling into internals
 - files that don't match any declared module are denied (fail-closed, not fail-silently)
 
 #### Configuration
@@ -103,6 +83,7 @@ import unslop from 'eslint-plugin-unslop'
 
 export default [
   {
+    plugins: { unslop },
     settings: {
       unslop: {
         sourceRoot: 'src',
@@ -124,6 +105,7 @@ export default [
     rules: {
       'unslop/import-control': 'error',
       'unslop/export-control': 'error',
+      'unslop/no-false-sharing': 'error',
     },
   },
 ]
@@ -133,77 +115,51 @@ export default [
 
 The customs declaration form for the other direction: what are you actually exporting from your module's public entrypoints?
 
-When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern — otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually.
+When a module defines `exports` regex patterns in `settings.unslop.architecture`, every symbol exported from that module's `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate with an error at the export site. Modules without `exports` are waved through by default, so you can adopt this gradually.
 
 ### `unslop/no-false-sharing`
 
-**Requires TypeScript parser with program**
+The "shared" folder anti-pattern detector. LLMs (and some humans also) love creating shared utilities that are only used by one consumer - or worse, by nobody at all. This rule requires that modules marked as `shared` in your architecture settings are actually imported by at least two separate directory-level consumers. If it's only used in one place, it's not shared - it's misplaced.
 
-The "shared" folder anti-pattern detector. LLMs love creating shared utilities that are only used by one consumer — or worse, by nobody at all. This rule requires that modules inside your designated shared directories are actually imported by at least two separate entities. If it's only used in one place, it's not shared — it's misplaced.
+#### Configuration
 
-#### Options
-
-```js
-;[
-  'error',
-  {
-    dirs: [{ path: 'shared' }, { path: 'utils', mode: 'file' }],
-    mode: 'dir',
-    sourceRoot: 'src',
-  },
-]
-```
-
-| Option        | Type              | Required | Description                                                                                  |
-| ------------- | ----------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `dirs`        | `array`           | yes      | Directories to enforce sharing rules on                                                      |
-| `dirs[].path` | `string`          | yes      | Directory path relative to `sourceRoot`                                                      |
-| `dirs[].mode` | `'file' \| 'dir'` | no       | How to count consumers for this dir (overrides global `mode`)                                |
-| `mode`        | `'file' \| 'dir'` | no       | Global consumer counting mode — `'file'` counts individual files, `'dir'` counts directories |
-| `sourceRoot`  | `string`          | no       | Source directory relative to project root                                                    |
-
-#### Setup
-
-This rule requires `typescript-eslint` with type information:
+Shared modules are declared via `shared: true` on module policies in
+`settings.unslop.architecture`:
 
 ```js
 // eslint.config.mjs
 import unslop from 'eslint-plugin-unslop'
-import tseslint from 'typescript-eslint'
 
-export default tseslint.config(
+export default [
+  unslop.configs.full,
   {
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          utils: { shared: true },
+          'shared/*': { shared: true },
+        },
       },
     },
   },
-  unslop.configs.recommended,
-  {
-    rules: {
-      'unslop/no-false-sharing': [
-        'error',
-        {
-          dirs: ['shared', 'utils'],
-          sourceRoot: 'src',
-        },
-      ],
-    },
-  },
-)
+]
 ```
+
+The rule takes no options - all configuration comes from the shared architecture settings, consistent with `import-control` and `export-control`.
+
+Consumer counting is always at the directory level: the first path segment relative to the source root. A file in `src/shared/format-date.ts` must be imported by files in at least two distinct top-level directories (e.g., `featureA` and `featureB`).
 
 #### What it catches
 
 ```
 src/shared/format-date.ts
-  → only imported by src/features/calendar/view.ts
-  → error: must be used by 2+ entities
+  -> only imported by src/features/calendar/view.ts
+  -> error: must be used by 2+ entities
 
 src/utils/old-helper.ts
-  → not imported by anyone
-  → error: must be used by 2+ entities
+  -> not imported by anyone
+  -> error: must be used by 2+ entities
 ```
 
 ### `unslop/read-friendly-order`
@@ -212,10 +168,10 @@ Enforces a top-down reading order for your code. The idea: when someone opens a 
 
 This rule covers three areas:
 
-**Top-level ordering** — Public/exported symbols should come before the private helpers they use. Read the API first, implementation details second.
+**Top-level ordering** - Public/exported symbols should come before the private helpers they use. Read the API first, implementation details second.
 
 ```js
-// Bad — helper defined before its consumer
+// Bad - helper defined before its consumer
 function formatName(name) {
   return name.trim().toLowerCase()
 }
@@ -224,7 +180,7 @@ export function createUser(name) {
   return { name: formatName(name) }
 }
 
-// Good — consumer first, helper below
+// Good - consumer first, helper below
 export function createUser(name) {
   return { name: formatName(name) }
 }
@@ -234,7 +190,7 @@ function formatName(name) {
 }
 ```
 
-**Class member ordering** — Constructor first, public fields next, then other members ordered by dependency.
+**Class member ordering** - Constructor first, public fields next, then other members ordered by dependency.
 
 ```js
 // Bad
@@ -252,10 +208,10 @@ class UserService {
 }
 ```
 
-**Test file ordering** — Setup hooks (`beforeEach`, `beforeAll`) before teardown hooks (`afterEach`, `afterAll`), and both before test cases.
+**Test file ordering** - Setup hooks (`beforeEach`, `beforeAll`) before teardown hooks (`afterEach`, `afterAll`), and both before test cases.
 
 ```js
-// Bad — setup and tests buried between helpers
+// Bad - setup and tests buried between helpers
 function buildFixture(overrides) {
   return { id: 1, ...overrides }
 }
@@ -269,7 +225,7 @@ beforeEach(() => {
   buildFixture()
 })
 
-// Good — setup first, then tests, helpers at the bottom
+// Good - setup first, then tests, helpers at the bottom
 beforeEach(() => {
   buildFixture()
 })
@@ -284,9 +240,43 @@ function assertCorrect(value) {
 }
 ```
 
+### `unslop/no-special-unicode`
+
+Disallows special unicode punctuation and whitespace characters in string literals and template literals. LLMs love to sprinkle in smart quotes (`"like this"`), non-breaking spaces, and other invisible gremlins that look fine in a PR review but cause fun bugs at runtime.
+
+Caught characters include: left/right smart quotes (`“” ‘’`), non-breaking space, en/em dash, horizontal ellipsis, zero-width space, and various other exotic whitespace.
+
+```js
+// Bad - these contain invisible special characters that look normal
+const greeting = 'Hello World' // a non-breaking space (U+00A0) is hiding between the words
+const quote = 'He said “hello”' // smart double quotes (U+201C, U+201D)
+
+// Good
+const greeting = 'Hello World' // regular ASCII space
+const quote = 'He said "hello"' // plain ASCII quotes
+```
+
+Note: the bad examples above contain actual unicode characters that may be
+indistinguishable from their ASCII counterparts in your font - that's exactly
+the problem this rule catches.
+
+### `unslop/no-unicode-escape`
+
+Prefers actual characters over `\uXXXX` escape sequences. If your string says `\u00A9`, just write `(c)` - your coworkers will thank you. LLM-generated code sometimes encodes characters as escape sequences for no good reason.
+
+```js
+// Bad
+const copyright = '\u00A9 2025'
+const arrow = '\u2192'
+
+// Good
+const copyright = '(c) 2025'
+const arrow = '->'
+```
+
 ## A Note on Provenance
 
-Yes, a fair amount of this was vibe-coded with LLM assistance — which is fitting, since that's exactly the context this plugin is designed for. That said, the ideas behind these rules, the decisions about what to catch and how to catch it, and the overall design are mine. Every piece of code went through human review, and the test cases in particular were written and verified with deliberate care.
+Yes, a fair amount of this was vibe-coded with LLM assistance - which is fitting, since that's exactly the context this plugin is designed for. That said, the ideas behind these rules, the decisions about what to catch and how to catch it, and the overall design are mine. Every piece of code went through human review, and the test cases in particular were written and verified with deliberate care.
 
 The project also dogfoods itself: `eslint-plugin-unslop` is linted using `eslint-plugin-unslop`.
 
@@ -332,12 +322,12 @@ Run these checks periodically:
 
 ```bash
 gh api repos/skhoroshavin/eslint-plugin-unslop/branches/main/protection
-gh run list --workflow "PR Gate" --limit 5
+gh run list -workflow "Test" -limit 5
 ```
 
 Expected audit outcomes:
 
-- `required_status_checks.contexts` includes `PR Gate`
+- `required_status_checks.contexts` includes `Test`
 - `required_pull_request_reviews.required_approving_review_count` is `1` or greater
 - `required_pull_request_reviews.dismiss_stale_reviews` is `true`
 - `enforce_admins.enabled` is `true`

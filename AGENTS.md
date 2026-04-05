@@ -41,7 +41,6 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 - Single file: `npm run test -- src/rules/no-special-unicode/index.test.ts`
 - Another file example: `npm run test -- src/rules/import-control/index.test.ts`
-- Autofix-specific file: `npm run test -- src/rules/read-friendly-order/autofix.test.ts`
 - Single test name across suite: `npm run test -- -t "cross-module import is blocked"`
 - Single file + test name: `npx vitest run src/rules/import-control/index.test.ts -t "cross-module import is blocked"`
 - Watch one file: `npx vitest src/rules/import-control/index.test.ts`
@@ -135,12 +134,15 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 ## Testing Conventions
 
-- Import Vitest APIs explicitly; globals are not enabled.
-- Use shared test utilities from `src/utils/test-fixtures.ts`.
-- Keep `valid` and `invalid` cases explicit in `ruleTester.run(...)`.
-- Prefer `messageId` assertions over full text checks when possible.
-- For path-sensitive behavior, use temporary fixtures, not real repo files.
-- Ensure temp fixture cleanup in `afterAll` where applicable.
+The full test specification is at `openspec/specs/test-conventions/spec.md`. Read it before writing or modifying any test. The rules below are a summary; the spec is authoritative.
+
+- All tests are end-to-end through `RuleTester`. No unit tests of internal helpers.
+- Every test case uses `scenario()` from `src/utils/test-fixtures/index.ts` — the one and only shared test utility.
+- Every test case is self-contained: all inputs (code, settings, file layout) are written inline in the call, no scrolling required.
+- `scenario.todo('description')` marks a spec scenario not yet covered by an implementation.
+- `messageId` assertions are preferred over raw `message` strings.
+- Each named scenario in `openspec/specs/<rule>/spec.md` must have a corresponding `scenario()` call.
+- **Do not add exports to `src/utils/test-fixtures/index.ts`.** Adding a second export requires updating the spec first.
 
 ## Recommended Change Workflow For Agents
 

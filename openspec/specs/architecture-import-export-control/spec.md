@@ -2,7 +2,7 @@
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings
 
-The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, and `shared`.
+The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, and `shared`. A module with `shared: true` is subject to false-sharing enforcement by `unslop/no-false-sharing`.
 
 #### Scenario: Architecture settings are present
 
@@ -13,6 +13,58 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 - **WHEN** architecture rules run without `settings.unslop.architecture`
 - **THEN** rules MUST fail gracefully without throwing
+
+#### Scenario: Module marked shared is subject to false-sharing enforcement
+
+- **WHEN** a module policy includes `shared: true` in `settings.unslop.architecture`
+- **THEN** `unslop/no-false-sharing` MUST enforce that files within that module are imported by at least two distinct directory-level consumers
+
+#### Scenario: Module not marked shared is exempt from false-sharing enforcement
+
+- **WHEN** a module policy does not include `shared: true`
+- **THEN** `unslop/no-false-sharing` MUST NOT report errors for files within that module
+
+### Requirement: no-false-sharing SHALL derive project root from sourceRoot path
+
+`unslop/no-false-sharing` MUST derive the project root by locating the `sourceRoot` segment in the absolute filename path and taking the prefix before it. This is consistent with how `import-control` and `export-control` resolve paths.
+
+#### Scenario: sourceRoot present in filename
+
+- **WHEN** `settings.unslop.sourceRoot` is set and the filename contains `/<sourceRoot>/`
+- **THEN** `no-false-sharing` MUST derive the project root as everything before `/<sourceRoot>/` in the filename
+
+#### Scenario: sourceRoot absent
+
+- **WHEN** `settings.unslop.sourceRoot` is not set
+- **THEN** `no-false-sharing` MUST fail gracefully and not report errors for the file
+
+### Requirement: no-false-sharing SHALL take no rule-level options
+
+`unslop/no-false-sharing` MUST declare an empty options schema (`schema: []`). All configuration comes from `settings.unslop.architecture`. Rule-level options are not supported.
+
+#### Scenario: Rule configured without options
+
+- **WHEN** `unslop/no-false-sharing` is enabled as `'error'` with no options
+- **THEN** it MUST read shared module configuration from `settings.unslop.architecture`
+
+### Requirement: no-false-sharing SHALL count consumers in directory mode only
+
+`unslop/no-false-sharing` MUST count distinct consumers at the directory level (first path segment relative to project root). File-level consumer counting is not supported. All files — including test files — count as consumers.
+
+#### Scenario: Two importers in the same directory
+
+- **WHEN** a shared file is imported by two files in the same directory
+- **THEN** `no-false-sharing` MUST report an error (only one directory-level consumer)
+
+#### Scenario: Two importers in different directories
+
+- **WHEN** a shared file is imported by files in at least two distinct directories
+- **THEN** `no-false-sharing` MUST allow the file
+
+#### Scenario: Test files count as consumers
+
+- **WHEN** a shared file is imported by test files in two or more distinct directories
+- **THEN** `no-false-sharing` MUST allow the file (test files are valid consumers)
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 

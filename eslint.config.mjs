@@ -16,6 +16,7 @@ export default [
       unslop: {
         sourceRoot: 'src',
         architecture: {
+          utils: { shared: true },
           'rules/*': {
             imports: ['utils', 'utils/test-fixtures'],
             exports: ['^default$'],
@@ -35,6 +36,7 @@ export default [
       'unslop/read-friendly-order': ['error'],
       'unslop/import-control': ['error'],
       'unslop/export-control': ['error'],
+      'unslop/no-false-sharing': 'error',
       'no-restricted-syntax': [
         'error',
         {
