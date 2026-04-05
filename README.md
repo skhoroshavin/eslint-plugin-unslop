@@ -7,7 +7,7 @@ Requires ESLint 9+ (flat config). TypeScript optional but recommended.
 ## Installation
 
 ```bash
-npm install -save-dev eslint-plugin-unslop
+npm install --save-dev eslint-plugin-unslop
 ```
 
 ## Quick Start
@@ -45,13 +45,14 @@ export default [
 
 This turns on:
 
-| Rule                        | Severity | What it does                                                        |
-| --------------------------- | -------- | ------------------------------------------------------------------- |
-| `unslop/import-control`     | error    | Enforces declared module import boundaries                          |
-| `unslop/export-control`     | error    | Restricts public exports to declared patterns                       |
-| `unslop/no-false-sharing`   | error    | Flags shared modules only used by one consumer                      |
-| `unslop/no-special-unicode` | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
-| `unslop/no-unicode-escape`  | error    | Prefers `"(c)"` over `"\u00A9"`                                     |
+| Rule                         | Severity | What it does                                                        |
+| ---------------------------- | -------- | ------------------------------------------------------------------- |
+| `unslop/import-control`      | error    | Enforces declared module import boundaries                          |
+| `unslop/export-control`      | error    | Restricts public exports to declared patterns                       |
+| `unslop/no-false-sharing`    | error    | Flags shared modules only used by one consumer                      |
+| `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors |
+| `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                     |
+| `unslop/read-friendly-order` | error    | Enforces top-down, dependency-friendly declaration order            |
 
 The `configs.minimal` config contains only the zero-config symbol fixers (`no-special-unicode` and `no-unicode-escape`). It is included automatically within `configs.full`, or can be used standalone for projects that don't need architecture enforcement:
 
@@ -82,6 +83,7 @@ import unslop from 'eslint-plugin-unslop'
 
 export default [
   {
+    plugins: { unslop },
     settings: {
       unslop: {
         sourceRoot: 'src',
@@ -121,18 +123,27 @@ The "shared" folder anti-pattern detector. LLMs (and some humans also) love crea
 
 #### Configuration
 
-Shared modules are declared via `shared: true` on module policies in `settings.unslop.architecture`:
+Shared modules are declared via `shared: true` on module policies in
+`settings.unslop.architecture`:
 
 ```js
-settings: {
-  unslop: {
-    sourceRoot: 'src',
-    architecture: {
-      utils: { shared: true },
-      'shared/*': { shared: true },
+// eslint.config.mjs
+import unslop from 'eslint-plugin-unslop'
+
+export default [
+  unslop.configs.full,
+  {
+    settings: {
+      unslop: {
+        sourceRoot: 'src',
+        architecture: {
+          utils: { shared: true },
+          'shared/*': { shared: true },
+        },
+      },
     },
   },
-}
+]
 ```
 
 The rule takes no options - all configuration comes from the shared architecture settings, consistent with `import-control` and `export-control`.
