@@ -1,267 +1,141 @@
-# Test Conventions Spec
+## Purpose
 
-## Philosophy
+Define the repository's required structure and conventions for rule tests.
 
-All tests in this repository are end-to-end. Every test exercises a rule through the public `RuleTester` interface. No test reaches into rule internals or tests helper functions directly. If an internal helper's behavior matters, it is covered implicitly by the rule test that depends on it.
+## ADDED Requirements
 
-Every test case is self-contained. All inputs — source code, file paths, settings, filesystem layout — are written inline in the test body. A reader must never scroll outside the test to understand what it does.
+### Requirement: Rule tests SHALL be end-to-end
 
-There is one shared test utility: `scenario()`. It is the only permitted way to write a rule test. It is the only export from `src/utils/test-fixtures/index.ts`. No other shared test helpers exist.
+All tests in this repository SHALL exercise a rule through the public `RuleTester` interface. Tests SHALL treat the rule as a black box and SHALL NOT reach into rule internals or test helper functions directly.
 
----
+#### Scenario: Verifying rule behavior
 
-## The scenario() API
+- **WHEN** a test is added for an ESLint rule
+- **THEN** it MUST exercise the rule through `RuleTester`
+- **AND** it MUST import the rule from that rule folder's public `index.ts` entrypoint
 
-```typescript
-import { scenario } from '../../utils/test-fixtures/index.js'
-import rule from './index.js'
+#### Scenario: Internal helper behavior matters
 
-scenario('description of the behavior being tested', rule, {
-  // --- Filesystem (optional) ---
-  // Creates a real temp directory with these files before the test runs.
-  // Required only when the rule reads the filesystem at lint time (no-false-sharing).
-  // All paths are relative to the temp dir root.
-  files: [
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumer.ts', content: "import { x } from '../shared'" },
-  ],
+- **WHEN** a helper's behavior is important to repository behavior
+- **THEN** it MUST be covered through a rule-level end-to-end scenario
+- **AND** the test MUST NOT call the helper directly
 
-  // --- Parser (optional) ---
-  // Set to true when the code under test uses TypeScript syntax (type annotations,
-  // interfaces, etc.). Uses @typescript-eslint/parser without a tsconfig project.
-  // Do not set this just because the rule implementation is TypeScript.
-  typescript: true,
+### Requirement: Rule tests SHALL use a single shared test utility
 
-  // --- ESLint settings (optional) ---
-  // Passed as the settings object to RuleTester. Required for architecture rules.
-  settings: {
-    unslop: {
-      sourceRoot: 'src',
-      architecture: {
-        'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
-      },
-    },
-  },
+The only shared test utility for rule tests SHALL be `scenario()` from `src/utils/test-fixtures/index.ts`. That module SHALL expose only `scenario` unless this spec is updated first.
 
-  // --- The code under test (required) ---
-  // The source string that will be linted.
-  code: "import { createUserRepo } from '../../repository/user/index.ts'",
+#### Scenario: Writing a rule test
 
-  // --- Filename (optional) ---
-  // When files: is absent, this is a plain string used as context.filename.
-  // When files: is present, this is resolved relative to the temp dir.
-  filename: 'src/models/user/index.ts',
+- **WHEN** a test file under `src/rules/` defines a test case
+- **THEN** it MUST use `scenario()`
 
-  // --- Expected errors (optional) ---
-  // If absent or empty, the scenario asserts no errors are reported (valid case).
-  // Use messageId, not message strings, unless the message is dynamic.
-  errors: [{ messageId: 'notAllowed' }],
+#### Scenario: Adding shared test helpers
 
-  // --- Expected autofix output (optional) ---
-  // The full source string after fix is applied.
-  // Set to null explicitly to assert that no autofix is emitted.
-  output: 'export function clamp(n) {\n  return Math.min(n, LIMIT)\n}\n\nconst LIMIT = 10',
-})
-```
+- **WHEN** a contributor wants to add another export to `src/utils/test-fixtures/index.ts`
+- **THEN** they MUST first update this spec
+- **AND** they MUST justify that the new export is needed by at least three test files and cannot be composed from `scenario()`
 
-### Parameter reference
+### Requirement: Rule tests SHALL be self-contained
 
-| Parameter     | Required | Type                     | Purpose                                                                  |
-| ------------- | -------- | ------------------------ | ------------------------------------------------------------------------ |
-| `description` | yes      | `string`                 | Names the behavior being verified. Should read like a spec scenario.     |
-| `rule`        | yes      | `Rule.RuleModule`        | The ESLint rule under test. Always imported from `./index.js`.           |
-| `files`       | no       | `Array<{path, content}>` | Real files written to a temp dir. Only for filesystem-scanning rules.    |
-| `typescript`  | no       | `boolean`                | Enable TypeScript parser. Use when code contains TS syntax.              |
-| `settings`    | no       | `object`                 | ESLint settings block. Required for architecture rules.                  |
-| `code`        | yes      | `string`                 | The source code to lint.                                                 |
-| `filename`    | no       | `string`                 | The filename context. Resolved against temp dir when `files` is present. |
-| `errors`      | no       | `Array<{messageId}>`     | Expected errors. Absent or empty means the case is valid.                |
-| `output`      | no       | `string \| null`         | Expected post-fix source. `null` asserts no fix is emitted.              |
+Every test case SHALL declare all relevant inputs inline in the `scenario()` call so a reader can understand the case without scrolling elsewhere for source code, file layout, settings, or filename context.
 
----
+#### Scenario: Declaring test inputs
 
-## Worked examples
+- **WHEN** a scenario depends on source code, file paths, settings, or filesystem layout
+- **THEN** those inputs MUST appear inline in that scenario's definition
 
-### Simple autofix rule (no-unicode-escape)
+#### Scenario: Reusing code snippets
 
-```typescript
-scenario('basic ASCII escape is replaced with literal character', rule, {
-  code: 'const x = "\\u0041";',
-  errors: [{ messageId: 'preferLiteral' }],
-  output: 'const x = "A";',
-})
+- **WHEN** a contributor considers extracting a code string or fixture object into a module-scope constant
+- **THEN** they SHOULD keep it inline unless the same value is shared by at least three scenarios in the same file
 
-scenario('literal unicode character is allowed', rule, {
-  code: 'const value = "—";',
-})
-```
+### Requirement: The scenario() API SHALL be the standard test shape
 
-No `files`, no `settings`, no `typescript`. All inputs visible on the first read.
+Rule tests SHALL express behavior through `scenario(description, rule, options)`, where `options` may include `files`, `typescript`, `settings`, `code`, `filename`, `errors`, and `output`.
 
-### Policy rule with settings (import-control)
+#### Scenario: Simple valid case
 
-```typescript
-scenario('cross-module import declared in allowlist is allowed', rule, {
-  settings: {
-    unslop: {
-      sourceRoot: 'src',
-      architecture: {
-        'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
-      },
-    },
-  },
-  filename: '/project/src/repository/user/service.ts',
-  code: "import { UserModel } from '../../models/user/index.ts'",
-})
+- **WHEN** a rule test needs only source code and expects no diagnostics
+- **THEN** the scenario MAY provide only `code`
 
-scenario('cross-module import not declared in allowlist is reported', rule, {
-  settings: {
-    unslop: {
-      sourceRoot: 'src',
-      architecture: {
-        'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
-      },
-    },
-  },
-  filename: '/project/src/models/user/index.ts',
-  code: "import { createUserRepo } from '../../repository/user/index.ts'",
-  errors: [{ messageId: 'notAllowed' }],
-})
-```
+#### Scenario: Invalid case with autofix
 
-Settings are written inline. No shared constant for `settings` unless it is identical across 3+ scenarios in the same file.
+- **WHEN** a rule test expects a report and autofix
+- **THEN** it MUST declare `errors`
+- **AND** it MUST declare full expected `output`
 
-### Filesystem-scanning rule (no-false-sharing)
+#### Scenario: Invalid case without autofix
 
-```typescript
-scenario('shared file only used by one directory raises false-sharing error', rule, {
-  files: [
-    { path: 'tsconfig.json', content: '{"compilerOptions":{"strict":true},"include":["**/*.ts"]}' },
-    { path: 'src/shared/index.ts', content: 'export const x = 1' },
-    { path: 'src/featureA/consumerA.ts', content: "import { x } from '../shared'" },
-    { path: 'src/featureA/consumerB.ts', content: "import { x } from '../shared'" },
-  ],
-  settings: {
-    unslop: { sourceRoot: 'src', architecture: { shared: { shared: true } } },
-  },
-  code: 'export const x = 1',
-  filename: 'src/shared/index.ts',
-  errors: [{ messageId: 'notTrulyShared' }],
-})
-```
+- **WHEN** a rule test expects a report but no safe fix
+- **THEN** it MUST declare `errors`
+- **AND** it SHOULD set `output: null` to assert that no autofix is emitted
 
-All filesystem state is declared in `files`. The `code` is the content of the file being linted. The `filename` is resolved against the temp dir automatically.
+#### Scenario: Filesystem-scanning rule
 
-### TypeScript syntax (read-friendly-order)
+- **WHEN** a rule reads the filesystem during lint execution
+- **THEN** the scenario MUST declare the needed files in `files`
+- **AND** `filename` SHALL be resolved relative to the temporary directory created for that scenario
 
-```typescript
-scenario('type declaration placed above its consumer is flagged', rule, {
-  typescript: true,
-  code: ['type Build<T> = { value: T }', '', 'export type PublicUser = Build<User>'].join('\n'),
-  errors: [{ messageId: 'moveHelperBelow' }],
-})
-```
+#### Scenario: TypeScript syntax under test
 
----
+- **WHEN** the code under test uses TypeScript syntax
+- **THEN** the scenario SHOULD set `typescript: true`
+- **AND** it MUST NOT set `typescript: true` only because the rule implementation itself is written in TypeScript
 
-## What NOT to do
+#### Scenario: Architecture rule configuration
 
-### Do not create assertion wrappers
+- **WHEN** a scenario exercises architecture-aware rules
+- **THEN** it MUST provide the needed `settings.unslop` configuration inline
 
-```typescript
-// WRONG — hides what assertion is being made
-function assertValid(file: string) {
-  makeTsRuleTester(SHARED_SETTINGS).run(rule, {
-    valid: [{ code: fixture.read(file), filename: fixture.filePath(file) }],
-    invalid: [],
-  })
-}
+### Requirement: Rule tests SHALL prefer message identifiers
 
-// RIGHT — use scenario() directly
-scenario('shared file used by two directories is allowed', rule, {
-  files: [...],
-  settings: SHARED_SETTINGS,
-  code: 'export const x = 1',
-  filename: 'src/shared/index.ts',
-})
-```
+Assertions for diagnostics SHALL use `messageId` instead of literal `message` strings unless the message text is inherently dynamic.
 
-### Do not declare module-scope fixture objects
+#### Scenario: Static diagnostic assertion
 
-```typescript
-// WRONG — lifecycle hidden in beforeEach/afterAll, reader must scroll
-const fixture = new ProjectFixture({ prefix: 'test-', files: [...] })
-beforeEach(() => { fixture.init() })
-afterAll(() => { fixture.cleanup() })
+- **WHEN** a rule reports a stable named message
+- **THEN** the test MUST assert that diagnostic with `messageId`
 
-// RIGHT — scenario() manages temp dir lifetime internally when files: is set
-scenario('...', rule, { files: [...], ... })
-```
+#### Scenario: Dynamic diagnostic text
 
-### Do not extract code strings into named constants unless shared across 3+ scenarios
+- **WHEN** a rule message cannot be asserted through a stable `messageId`
+- **THEN** the test MAY assert the rendered message text instead
 
-```typescript
-// WRONG — reader must scroll to understand what EXPORT_X contains
-const EXPORT_X = 'export const x = 1'
-scenario('...', rule, { code: EXPORT_X, ... })
+### Requirement: Spec scenarios SHALL be tracked in rule tests
 
-// RIGHT — inline it
-scenario('...', rule, { code: 'export const x = 1', ... })
-```
+Each named scenario in `openspec/specs/<rule>/spec.md` SHALL have at least one corresponding `scenario()` call in the relevant test file, and the mapping between the spec scenario name and the test description SHALL be obvious.
 
-### Do not write unit tests for internal helpers
+#### Scenario: Implemented spec scenario
 
-```typescript
-// WRONG — tests an internal function, not the rule's public behavior
-import { matchFileToArchitectureModule } from './architecture-policy.js'
-test('prefers exact matcher over wildcard', () => {
-  expect(matchFileToArchitectureModule(...)).toMatchObject(...)
-})
+- **WHEN** a named spec scenario is implemented
+- **THEN** the rule test file MUST include at least one matching `scenario()` call
+- **AND** the test description SHOULD mirror the spec scenario closely enough that the mapping is easy to review
 
-// RIGHT — write a scenario() for the rule that depends on this behavior
-scenario('exact module matcher takes precedence over wildcard matcher', rule, {
-  settings: { unslop: { sourceRoot: 'src', architecture: {
-    'repository/*': { imports: [] },
-    'repository/special': { imports: ['models/*'] },
-  }}},
-  filename: '/project/src/repository/special/index.ts',
-  code: "import { x } from '../../models/user/index.ts'",
-})
-```
+#### Scenario: Unimplemented spec scenario
 
-### Do not add exports to test-fixtures/index.ts
+- **WHEN** a named spec scenario is not yet implemented in tests
+- **THEN** the test file SHOULD include `scenario.todo()` with a matching description so the gap remains visible
 
-The file exports exactly one thing: `scenario`. Adding a second export requires updating this spec first and getting explicit agreement. The bar for a new shared export is: it must be needed by 3+ test files and cannot be composed from `scenario`.
+### Requirement: Test descriptions SHALL read as behavior statements
 
----
+Scenario descriptions SHALL describe externally observable behavior rather than internal implementation labels or bookkeeping names.
 
-## Spec coverage rule
+#### Scenario: Naming a passing or failing case
 
-Each named scenario in `openspec/specs/<rule>/spec.md` must have at least one corresponding `scenario()` call in the rule's test file. The test description should mirror the spec scenario name closely enough that the mapping is obvious.
+- **WHEN** a contributor writes a scenario description
+- **THEN** it SHOULD read like a behavior statement such as `cross-module import not declared in allowlist is reported`
+- **AND** it SHOULD NOT use labels such as `test 1` or implementation-centric shorthand
 
-When a spec scenario is not yet implemented, add a `scenario.todo()` call:
+### Requirement: Rule tests SHALL avoid hidden lifecycle and assertion wrappers
 
-```typescript
-scenario.todo('zero-width space is removed by autofix')
-```
+Rule tests SHALL keep setup and assertions visible in the scenario body rather than hiding them behind lifecycle-managed fixtures or custom assertion wrappers.
 
-This keeps the gap visible without leaving the spec untracked.
+#### Scenario: Custom assertion wrapper
 
----
+- **WHEN** a contributor considers introducing a helper such as `assertValid()` or `assertInvalid()` that hides the `scenario()` call
+- **THEN** they SHOULD write the scenario directly instead
 
-## Naming convention
+#### Scenario: Module-scope fixture lifecycle
 
-Test descriptions should read as behavior statements, not as implementation labels.
-
-```
-GOOD: 'cross-module import not declared in allowlist is reported'
-GOOD: 'shared file used by one directory raises false-sharing error'
-GOOD: 'helper declared above its consumer is moved below by autofix'
-
-BAD:  'test 1'
-BAD:  'autofix: basic ASCII escape with double quotes'
-BAD:  'dir-mode shared file single folder invalid'
-```
+- **WHEN** a contributor considers using `beforeEach`, `afterEach`, or `afterAll` to manage shared temp fixtures for rule tests
+- **THEN** they SHOULD express the needed files inline through `scenario({ files: [...] })` instead
