@@ -20,4 +20,4 @@
 
 ## 4. Smoke Test
 
-- [ ] 4.1 Trigger the workflow via the GitHub UI with `bump=patch` and confirm: version commit appears on `main`, tag is created, npm package is published, GitHub release is created
+- [x] 4.1 Trigger the workflow via the GitHub UI with `bump=patch` and confirm: version commit appears on `main`, tag is created, npm package is published, GitHub release is created
