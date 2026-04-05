@@ -33,8 +33,12 @@ const rule: Rule.RuleModule = {
     if (!matched.policy.shared) return {}
     if (!isPublicEntrypoint(filename)) return {}
 
-    const sourceDir = deriveSourceDir(filename, policy.sourceRoot)
-    if (sourceDir === undefined) return {}
+    const sourceRoot = policy.sourceRoot
+    if (sourceRoot === undefined) return {}
+
+    const projectRoot = deriveProjectRoot(filename, sourceRoot)
+    if (projectRoot === undefined) return {}
+    const sourceDir = node_path.join(projectRoot, sourceRoot)
 
     return {
       Program(node) {
@@ -47,13 +51,13 @@ const rule: Rule.RuleModule = {
   },
 }
 
-function deriveSourceDir(filename: string, sourceRoot: string | undefined): string | undefined {
+function deriveProjectRoot(filename: string, sourceRoot: string | undefined): string | undefined {
   const normalized = normalizePath(filename)
   if (sourceRoot === undefined) return undefined
   const marker = `/${sourceRoot}/`
   const index = normalized.indexOf(marker)
   if (index === -1) return undefined
-  return normalized.slice(0, index + marker.length - 1)
+  return normalized.slice(0, index)
 }
 
 function findConsumers(filename: string, sourceDir: string): string | undefined {
