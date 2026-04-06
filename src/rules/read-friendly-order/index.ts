@@ -55,7 +55,7 @@ function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtens
   const entries = collectEntries(p)
 
   // Filter to declarations (not imports or external re-exports)
-  const decls = entries.filter((e) => !e.isImport && !e.isExternalReexport)
+  const decls = entries.filter(isDeclarationEntry)
   filterDepsToLocal(decls)
   const eager = buildEagerSet(decls)
   const cyclic = findCyclic(decls)
@@ -138,28 +138,16 @@ function reachesSelf(
   localNames: Set<string>,
   visited: Set<string>,
 ): boolean {
-  return doReachesSelf({ target, current, byName, localNames, visited })
-}
-
-function doReachesSelf(args: ReachArgs): boolean {
-  const entry = args.byName.get(args.current)
+  const entry = byName.get(current)
   if (!entry) return false
   for (const dep of entry.deps) {
-    if (!args.localNames.has(dep)) continue
-    if (dep === args.target) return true
-    if (args.visited.has(dep)) continue
-    args.visited.add(dep)
-    if (doReachesSelf({ ...args, current: dep })) return true
+    if (!localNames.has(dep)) continue
+    if (dep === target) return true
+    if (visited.has(dep)) continue
+    visited.add(dep)
+    if (reachesSelf(target, dep, byName, localNames, visited)) return true
   }
   return false
-}
-
-interface ReachArgs {
-  target: string
-  current: string
-  byName: Map<string, Entry>
-  localNames: Set<string>
-  visited: Set<string>
 }
 
 function filterDepsToLocal(decls: Entry[]): void {
@@ -189,11 +177,28 @@ function findViolations(decls: Entry[], eager: Set<string>, cyclic: Set<string>)
 }
 
 function getBand(entry: Entry): number {
-  if (entry.isImport) return 1
-  if (entry.isExternalReexport) return 2
-  if (entry.isLocalExportList || entry.isLocalExportDefault || entry.isLocalPublicExport) return 3
-  return 4 // private declarations
+  if (entry.isImport) return BAND_IMPORT
+  if (entry.isExternalReexport) return BAND_EXTERNAL_REEXPORT
+  if (isLocalPublicApiEntry(entry)) return BAND_LOCAL_PUBLIC_API
+  return BAND_PRIVATE
 }
+
+function isDeclarationEntry(entry: Entry): boolean {
+  return !entry.isImport && !entry.isExternalReexport
+}
+
+function isLocalPublicApiEntry(entry: Entry): boolean {
+  return entry.isLocalExportList || entry.isLocalExportDefault || entry.isLocalPublicExport
+}
+
+function isPrivateEntry(entry: Entry): boolean {
+  return !entry.isImport && !entry.isExternalReexport && !isLocalPublicApiEntry(entry)
+}
+
+const BAND_IMPORT = 1
+const BAND_EXTERNAL_REEXPORT = 2
+const BAND_LOCAL_PUBLIC_API = 3
+const BAND_PRIVATE = 4
 
 function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
   let best: Entry | undefined
@@ -253,9 +258,7 @@ function buildTopFix(
     const externalReexports = entries.filter((e) => e.isExternalReexport)
 
     // Band 3: local public API (local export declarations, lists, and default)
-    const localPublicApi = entries.filter(
-      (e) => e.isLocalExportList || e.isLocalExportDefault || e.isLocalPublicExport,
-    )
+    const localPublicApi = entries.filter(isLocalPublicApiEntry)
     const sortedPublicApi = kahnsSort(localPublicApi)
 
     // Prioritize export default at the top of local public API band if present
@@ -266,14 +269,7 @@ function buildTopFix(
       : otherPublicApi
 
     // Band 4: private declarations (not imports, external re-exports, or local public API)
-    const privateDecls = entries.filter(
-      (e) =>
-        !e.isImport &&
-        !e.isExternalReexport &&
-        !e.isLocalExportList &&
-        !e.isLocalExportDefault &&
-        !e.isLocalPublicExport,
-    )
+    const privateDecls = entries.filter(isPrivateEntry)
     const sortedPrivate = kahnsSort(privateDecls)
 
     // Combine all bands in canonical order

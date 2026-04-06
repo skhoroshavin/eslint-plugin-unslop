@@ -140,13 +140,12 @@ function walkNodeChildren(node: unknown, visit: (child: unknown) => void): void 
 }
 
 export function getDeclKind(node: Node): 'constant' | 'type' | 'function' | 'other' {
-  const t = node.type
-  // Type declarations (using type assertions for TS-specific nodes)
-  if ((t as string) === 'TSInterfaceDeclaration' || (t as string) === 'TSTypeAliasDeclaration') {
+  const type = strProp(node, 'type')
+  if (!type) return 'other'
+  if (type === 'TSInterfaceDeclaration' || type === 'TSTypeAliasDeclaration') {
     return 'type'
   }
-  // Check for exported types
-  if (t === 'ExportNamedDeclaration') {
+  if (type === 'ExportNamedDeclaration') {
     const decl = prop(node, 'declaration')
     if (decl && typeof decl === 'object') {
       const declType = strProp(decl, 'type')
@@ -159,12 +158,10 @@ export function getDeclKind(node: Node): 'constant' | 'type' | 'function' | 'oth
     }
     return 'other'
   }
-  // Function declarations
-  if (t === 'FunctionDeclaration') {
+  if (type === 'FunctionDeclaration') {
     return 'function'
   }
-  // Variable declarations - check if it's a constant
-  if (t === 'VariableDeclaration') {
+  if (type === 'VariableDeclaration') {
     const decls = prop(node, 'declarations')
     if (!Array.isArray(decls) || decls.length === 0) return 'other'
     const name = idName(decls[0])
@@ -181,12 +178,8 @@ export function getDeclKind(node: Node): 'constant' | 'type' | 'function' | 'oth
 }
 
 export function isLocalPublicExport(node: Node): boolean {
-  // Local export declarations: export function/class/const/type/interface ...
-  if (node.type === 'ExportNamedDeclaration') {
-    // Has a declaration (not just specifiers/re-export)
-    return !!prop(node, 'declaration')
-  }
-  return false
+  if (!isNamedExport(node)) return false
+  return hasDeclaration(node)
 }
 
 export function isEagerInit(node: Node): boolean {
@@ -206,32 +199,33 @@ export function isEagerInit(node: Node): boolean {
 }
 
 export function isReexportNode(node: Node): boolean {
-  // External re-exports: export { ... } from '...' or export * from '...'
-  if (node.type === 'ExportNamedDeclaration') {
-    if (prop(node, 'source')) return true
-    return false
-  }
-  if (node.type === 'ExportAllDeclaration') {
-    return true
-  }
-  return false
+  if (isNamedExport(node)) return hasSource(node)
+  return node.type === 'ExportAllDeclaration'
 }
 
 export function isLocalExportList(node: Node): boolean {
-  // Local export lists: export { ... } without a source (not a re-export)
-  if (node.type === 'ExportNamedDeclaration') {
-    if (prop(node, 'source')) return false
-    if (prop(node, 'declaration')) return false
-    const specs = prop(node, 'specifiers')
-    return Array.isArray(specs) && specs.length > 0
-  }
-  return false
+  if (!isNamedExport(node)) return false
+  if (hasSource(node)) return false
+  if (hasDeclaration(node)) return false
+  const specs = prop(node, 'specifiers')
+  return Array.isArray(specs) && specs.length > 0
 }
 
 export function isLocalExportDefault(node: Node): boolean {
-  // Local export default: export default <declaration>
   if (node.type === 'ExportDefaultDeclaration') {
     return strProp(prop(node, 'declaration'), 'type') !== 'Identifier'
   }
   return false
+}
+
+function isNamedExport(node: Node): boolean {
+  return node.type === 'ExportNamedDeclaration'
+}
+
+function hasSource(node: Node): boolean {
+  return !!prop(node, 'source')
+}
+
+function hasDeclaration(node: Node): boolean {
+  return !!prop(node, 'declaration')
 }
