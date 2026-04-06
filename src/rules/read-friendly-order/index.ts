@@ -1,11 +1,22 @@
 /* eslint-disable no-restricted-syntax, complexity, max-params */
 import type { Rule } from 'eslint'
+
 import type { Node, Program } from 'estree'
-import { getDeclName, collectDeps, isEagerInit, isReexportNode } from './ast-utils.js'
+
+import {
+  getDeclName,
+  collectDeps,
+  isEagerInit,
+  isReexportNode,
+  isLocalExportList,
+  isLocalExportDefault,
+} from './ast-utils.js'
+
 import { checkClass } from './class-order.js'
+
 import { checkTestPhases } from './test-phase.js'
 
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'suggestion',
     docs: {
@@ -36,16 +47,22 @@ const rule: Rule.RuleModule = {
       },
     }
   },
-}
+} satisfies Rule.RuleModule
 
-interface Entry {
-  node: Node & Rule.NodeParentExtension
-  idx: number
-  name: string | null
-  deps: Set<string>
-  eager: boolean
-  isImport: boolean
-  isReexport: boolean
+function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtension): void {
+  const entries = collectEntries(p)
+
+  // Filter to only private declarations (not imports, external re-exports, or local public API)
+  const decls = entries.filter(
+    (e) => !e.isImport && !e.isExternalReexport && !e.isLocalExportList && !e.isLocalExportDefault,
+  )
+  filterDepsToLocal(decls)
+  const eager = buildEagerSet(decls)
+  const cyclic = findCyclic(decls)
+  const violations = findViolations(decls, eager, cyclic)
+  if (violations.length === 0) return
+  const safe = isFixSafe(ctx, entries)
+  reportAll(ctx, violations, safe, p, entries)
 }
 
 function collectEntries(p: Program): Entry[] {
@@ -53,6 +70,17 @@ function collectEntries(p: Program): Entry[] {
   for (let i = 0; i < p.body.length; i++) {
     const stmt = p.body[i] as Node & Rule.NodeParentExtension
     const name = getDeclName(stmt)
+    const isExternalReexport = isReexportNode(stmt)
+    const isLocalExport = isLocalExportList(stmt)
+    const isExportDefault = isLocalExportDefault(stmt)
+    // Private declarations are neither imports, external re-exports, nor local public API exports
+    const isPrivate =
+      !stmt.type.includes('Import') &&
+      !stmt.type.includes('Export') &&
+      !isExternalReexport &&
+      !isLocalExport &&
+      !isExportDefault
+
     entries.push({
       node: stmt,
       idx: i,
@@ -60,7 +88,10 @@ function collectEntries(p: Program): Entry[] {
       deps: collectDeps(stmt, name),
       eager: isEagerInit(stmt),
       isImport: stmt.type === 'ImportDeclaration',
-      isReexport: isReexportNode(stmt),
+      isExternalReexport: isExternalReexport,
+      isLocalExportList: isLocalExport,
+      isLocalExportDefault: isExportDefault,
+      isPrivateDecl: isPrivate,
     })
   }
   return entries
@@ -107,14 +138,6 @@ function findCyclic(entries: Entry[]): Set<string> {
   return inCycle
 }
 
-interface ReachArgs {
-  target: string
-  current: string
-  byName: Map<string, Entry>
-  localNames: Set<string>
-  visited: Set<string>
-}
-
 function reachesSelf(
   target: string,
   current: string,
@@ -138,16 +161,12 @@ function doReachesSelf(args: ReachArgs): boolean {
   return false
 }
 
-function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtension): void {
-  const entries = collectEntries(p)
-  const decls = entries.filter((e) => !e.isImport && !e.isReexport)
-  filterDepsToLocal(decls)
-  const eager = buildEagerSet(decls)
-  const cyclic = findCyclic(decls)
-  const violations = findViolations(decls, eager, cyclic)
-  if (violations.length === 0) return
-  const safe = isFixSafe(ctx, entries)
-  reportAll(ctx, violations, safe, p, entries)
+interface ReachArgs {
+  target: string
+  current: string
+  byName: Map<string, Entry>
+  localNames: Set<string>
+  visited: Set<string>
 }
 
 function filterDepsToLocal(decls: Entry[]): void {
@@ -170,19 +189,11 @@ function findViolations(decls: Entry[], eager: Set<string>, cyclic: Set<string>)
 function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
   let best: Entry | undefined
   for (const e of decls) {
-    if (e.name === name || e.isReexport) continue
+    if (e.name === name || e.isExternalReexport || e.isLocalExportList) continue
     if (!e.deps.has(name)) continue
     if (!best || e.idx < best.idx) best = e
   }
   return best
-}
-
-interface ReportAllArgs {
-  ctx: Rule.RuleContext
-  violations: Entry[]
-  safe: boolean
-  p: Program & Rule.NodeParentExtension
-  entries: Entry[]
 }
 
 function reportAll(
@@ -205,6 +216,14 @@ function doReportAll(args: ReportAllArgs): void {
       fix: args.safe && i === 0 ? buildTopFix(args.ctx, args.p, args.entries) : null,
     })
   }
+}
+
+interface ReportAllArgs {
+  ctx: Rule.RuleContext
+  violations: Entry[]
+  safe: boolean
+  p: Program & Rule.NodeParentExtension
+  entries: Entry[]
 }
 
 function isFixSafe(ctx: Rule.RuleContext, entries: Entry[]): boolean {
@@ -231,11 +250,33 @@ function buildTopFix(
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const src = ctx.sourceCode
+
+    // Band 1: imports
     const imports = entries.filter((e) => e.isImport)
-    const reexports = entries.filter((e) => e.isReexport)
-    const decls = entries.filter((e) => !e.isImport && !e.isReexport)
-    const sorted = kahnsSort(decls)
-    const all = [...imports, ...sorted, ...reexports]
+
+    // Band 2: external re-exports (export ... from ...)
+    const externalReexports = entries.filter((e) => e.isExternalReexport)
+
+    // Band 3: local public API (local export declarations and lists)
+    const localPublicApi = entries.filter((e) => e.isLocalExportList || e.isLocalExportDefault)
+    const sortedPublicApi = kahnsSort(localPublicApi)
+
+    // Prioritize export default at the top of local public API band if present
+    const exportDefaultEntry = sortedPublicApi.find((e) => e.isLocalExportDefault)
+    const otherPublicApi = sortedPublicApi.filter((e) => !e.isLocalExportDefault)
+    const prioritizedPublicApi = exportDefaultEntry
+      ? [exportDefaultEntry, ...otherPublicApi]
+      : otherPublicApi
+
+    // Band 4: private declarations (everything else)
+    const privateDecls = entries.filter(
+      (e) =>
+        !e.isImport && !e.isExternalReexport && !e.isLocalExportList && !e.isLocalExportDefault,
+    )
+    const sortedPrivate = kahnsSort(privateDecls)
+
+    // Combine all bands in canonical order
+    const all = [...imports, ...externalReexports, ...prioritizedPublicApi, ...sortedPrivate]
     const text = all.map((e) => src.getText(e.node)).join('\n\n')
     return fixer.replaceTextRange([p.range![0], p.range![1]], text)
   }
@@ -286,4 +327,15 @@ function drainKahns(
   return result
 }
 
-export default rule
+interface Entry {
+  node: Node & Rule.NodeParentExtension
+  idx: number
+  name: string | null
+  deps: Set<string>
+  eager: boolean
+  isImport: boolean
+  isExternalReexport: boolean
+  isLocalExportList: boolean
+  isLocalExportDefault: boolean
+  isPrivateDecl: boolean
+}

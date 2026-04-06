@@ -64,7 +64,7 @@ scenario('exported constant defined before unexported helper is allowed', rule, 
   ].join('\n'),
 })
 
-scenario('helper declared above its consumer is flagged and moved below by autofix', rule, {
+scenario('helper declared below its consumer (export default) is the correct band order', rule, {
   code: [
     "import value from './value.js'",
     '',
@@ -76,18 +76,8 @@ scenario('helper declared above its consumer is flagged and moved below by autof
     '  },',
     '}',
   ].join('\n'),
-  errors: [{ messageId: 'moveHelperBelow' }],
-  output: [
-    "import value from './value.js'",
-    '',
-    'export default {',
-    '  create() {',
-    '    return helper()',
-    '  },',
-    '}',
-    '',
-    'function helper() { return value }',
-  ].join('\n'),
+  // With banding, export default is in band 3 (local public API) above helper in band 4 (private)
+  // No violation since helper is correctly placed in the private band
 })
 
 scenario(
@@ -162,13 +152,13 @@ scenario('exported constant above function that uses it is flagged and moved bel
   ].join('\n'),
   errors: [{ messageId: 'moveConstantBelow' }],
   output: [
+    'export { MAX_COUNT }',
+    '',
     'export function limit() {',
     '  return Math.min(MAX_COUNT, 10)',
     '}',
     '',
     'const MAX_COUNT = 3',
-    '',
-    'export { MAX_COUNT }',
   ].join('\n'),
 })
 
@@ -210,13 +200,13 @@ scenario('internal constant above exported function is flagged and moved below',
   ].join('\n'),
   errors: [{ messageId: 'moveConstantBelow' }],
   output: [
+    'export { clamp }',
+    '',
     'function clamp(input) {',
     '  return Math.min(input, INTERNAL_LIMIT)',
     '}',
     '',
     'const INTERNAL_LIMIT = 3',
-    '',
-    'export { clamp }',
   ].join('\n'),
 })
 

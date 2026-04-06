@@ -128,3 +128,17 @@ scenario('missing architecture settings fails gracefully without reporting', rul
   filename: '/repo/src/repository/user/index.ts',
   code: 'export const helper = 1',
 })
+
+scenario('non-entrypoint file with export-all is rejected', rule, {
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'utils/*': { imports: ['shared/*'] },
+      },
+    },
+  },
+  filename: '/repo/src/utils/helpers.ts',
+  code: "export * from './internal.ts'",
+  errors: [{ messageId: 'exportAllForbidden' }],
+})

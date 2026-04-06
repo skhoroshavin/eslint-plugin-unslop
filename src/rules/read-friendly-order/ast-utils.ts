@@ -152,13 +152,32 @@ export function isEagerInit(node: Node): boolean {
 }
 
 export function isReexportNode(node: Node): boolean {
+  // External re-exports: export { ... } from '...' or export * from '...'
   if (node.type === 'ExportNamedDeclaration') {
+    if (prop(node, 'source')) return true
+    return false
+  }
+  if (node.type === 'ExportAllDeclaration') {
+    return true
+  }
+  return false
+}
+
+export function isLocalExportList(node: Node): boolean {
+  // Local export lists: export { ... } without a source (not a re-export)
+  if (node.type === 'ExportNamedDeclaration') {
+    if (prop(node, 'source')) return false
     if (prop(node, 'declaration')) return false
     const specs = prop(node, 'specifiers')
     return Array.isArray(specs) && specs.length > 0
   }
+  return false
+}
+
+export function isLocalExportDefault(node: Node): boolean {
+  // Local export default: export default <declaration>
   if (node.type === 'ExportDefaultDeclaration') {
-    return strProp(prop(node, 'declaration'), 'type') === 'Identifier'
+    return strProp(prop(node, 'declaration'), 'type') !== 'Identifier'
   }
   return false
 }

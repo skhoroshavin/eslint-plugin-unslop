@@ -1,5 +1,7 @@
 import type { Rule } from 'eslint'
+
 import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
+
 import {
   getDeclarationNamesFromExport,
   isPublicEntrypoint,
@@ -7,7 +9,7 @@ import {
   readArchitecturePolicy,
 } from '../../utils/index.js'
 
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'problem',
     docs: {
@@ -16,7 +18,7 @@ const rule: Rule.RuleModule = {
     },
     schema: [],
     messages: {
-      exportAllForbidden: 'Export denied: export * is not allowed in module entrypoints.',
+      exportAllForbidden: 'Export denied: export * is not allowed.',
       symbolDenied:
         'Export denied: symbol "{{symbol}}" does not match configured exports patterns.',
       invalidExportRegex: 'Configuration error: invalid exports pattern "{{pattern}}"',
@@ -27,8 +29,7 @@ const rule: Rule.RuleModule = {
     if (!filename) return {}
 
     const state = buildRuleState(context, filename)
-    if (state === undefined) return {}
-    if (state.invalidPattern !== undefined) {
+    if (state?.invalidPattern !== undefined) {
       const root = context.getSourceCode().ast
       context.report({
         node: root,
@@ -40,19 +41,19 @@ const rule: Rule.RuleModule = {
 
     return {
       ExportNamedDeclaration(node) {
-        checkNamedExport(context, node, state.patterns, state.shouldForbidExportAll)
+        checkNamedExport(context, node, state?.patterns, state?.shouldForbidExportAll ?? true)
       },
       ExportAllDeclaration(node) {
-        if (!state.shouldForbidExportAll) return
+        // Always reject export * from ... in all files per spec
         checkExportAll(context, node)
       },
       ExportDefaultDeclaration(node) {
-        if (state.patterns === undefined) return
+        if (state?.patterns === undefined) return
         checkDefaultExport(context, node, state.patterns)
       },
     }
   },
-}
+} satisfies Rule.RuleModule
 
 function buildRuleState(context: Rule.RuleContext, filename: string): RuleState | undefined {
   const policy = readArchitecturePolicy(context)
@@ -144,5 +145,3 @@ interface RuleState {
   patterns?: RegExp[]
   invalidPattern?: string
 }
-
-export default rule

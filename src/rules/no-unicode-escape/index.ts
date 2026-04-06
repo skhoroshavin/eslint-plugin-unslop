@@ -1,7 +1,8 @@
 import type { Rule } from 'eslint'
+
 import type { Node } from 'estree'
 
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'suggestion',
     docs: {
@@ -39,7 +40,7 @@ const rule: Rule.RuleModule = {
       },
     }
   },
-}
+} satisfies Rule.RuleModule
 
 function reportIfNeeded(context: Rule.RuleContext, node: Node, fixed: string | null): void {
   const range = node.range
@@ -87,6 +88,12 @@ interface EscapeMatch {
 
 const ESCAPE_RE = /\\u([0-9A-Fa-f]{4})/g
 
+function isUnsafe(codePoint: number, wrapper: string): boolean {
+  if (codePoint < 0x20) return true
+  if (ALWAYS_UNSAFE.has(codePoint)) return true
+  return codePoint === WRAPPER_UNSAFE[wrapper]
+}
+
 const ALWAYS_UNSAFE = new Set([0x5c])
 
 const WRAPPER_UNSAFE: Record<string, number> = {
@@ -94,11 +101,3 @@ const WRAPPER_UNSAFE: Record<string, number> = {
   "'": 0x27,
   '`': 0x60,
 }
-
-function isUnsafe(codePoint: number, wrapper: string): boolean {
-  if (codePoint < 0x20) return true
-  if (ALWAYS_UNSAFE.has(codePoint)) return true
-  return codePoint === WRAPPER_UNSAFE[wrapper]
-}
-
-export default rule

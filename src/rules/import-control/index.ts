@@ -1,6 +1,9 @@
 import type { Rule } from 'eslint'
+
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
+
 import node_path from 'node:path'
+
 import {
   isPublicEntrypoint,
   matchFileToArchitectureModule,
@@ -9,7 +12,7 @@ import {
   resolveImportTarget,
 } from '../../utils/index.js'
 
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'problem',
     docs: {
@@ -44,7 +47,7 @@ const rule: Rule.RuleModule = {
       },
     }
   },
-}
+} satisfies Rule.RuleModule
 
 function checkDeclaration(
   context: Rule.RuleContext,
@@ -190,5 +193,3 @@ function isRelativeTooDeep(specifier: string): boolean {
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
   return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
 }
-
-export default rule
