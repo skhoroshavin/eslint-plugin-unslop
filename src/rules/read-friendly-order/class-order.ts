@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, complexity, max-params, unslop/read-friendly-order */
+/* eslint-disable no-restricted-syntax, complexity, unslop/read-friendly-order */
 import type { Rule } from 'eslint'
 import type { Node } from 'estree'
 import { walkThisDeps } from './ast-utils.js'
@@ -17,60 +17,83 @@ export function checkClass(
   ctx: Rule.RuleContext,
   classBody: Node & Rule.NodeParentExtension,
 ): void {
-  const body = Reflect.get(classBody, 'body') as Array<Node & Rule.NodeParentExtension> | undefined
-  if (!body || body.length === 0) return
-  const members = collectMembers(body)
-  const hasComputed = members.some((m) => m.computed)
-
-  if (checkCtorFirst(ctx, members, classBody, hasComputed)) return
-  if (checkFieldOrder(ctx, members, classBody, hasComputed)) return
-  checkMethodOrder(ctx, members, classBody, hasComputed)
+  const analyzer = new ClassOrderAnalyzer(ctx, classBody)
+  analyzer.analyze()
 }
 
-function checkCtorFirst(
-  ctx: Rule.RuleContext,
-  members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
-  hasComputed: boolean,
-): boolean {
-  const ctorIdx = members.findIndex((m) => m.kind === 'constructor')
-  if (ctorIdx <= 0) return false
-  report(ctx, members, classBody, hasComputed, 'constructorFirst', members[ctorIdx])
-  return true
-}
+class ClassOrderAnalyzer {
+  private readonly members: MemberEntry[]
+  private readonly hasComputedMembers: boolean
 
-function checkFieldOrder(
-  ctx: Rule.RuleContext,
-  members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
-  hasComputed: boolean,
-): boolean {
-  const ctorIdx = members.findIndex((m) => m.kind === 'constructor')
-  if (ctorIdx < 0) return false
-  for (const f of members.filter((m) => m.isPublic)) {
-    if (f.idx <= ctorIdx) continue
-    if (members.slice(ctorIdx + 1, f.idx).some((m) => m.kind === 'method')) {
-      report(ctx, members, classBody, hasComputed, 'publicFieldOrder', f)
-      return true
-    }
-  }
-  return false
-}
-
-function checkMethodOrder(
-  ctx: Rule.RuleContext,
-  members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
-  hasComputed: boolean,
-): void {
-  const methods = members.filter((m) => m.kind === 'method')
-  const cyclic = findCyclicMethods(methods)
-  for (const m of methods) {
-    if (!m.name || cyclic.has(m.name)) continue
-    if (methods.some((o) => o !== m && o.thisDeps.has(m.name!) && o.idx > m.idx)) {
-      report(ctx, members, classBody, hasComputed, 'moveMemberBelow', m)
+  constructor(
+    private readonly context: Rule.RuleContext,
+    private readonly classBody: Node & Rule.NodeParentExtension,
+  ) {
+    const body = Reflect.get(classBody, 'body') as
+      | Array<Node & Rule.NodeParentExtension>
+      | undefined
+    if (!body || body.length === 0) {
+      this.members = []
+      this.hasComputedMembers = false
       return
     }
+    this.members = collectMembers(body)
+    this.hasComputedMembers = this.members.some((member) => member.computed)
+  }
+
+  analyze(): void {
+    if (this.members.length === 0) return
+    if (this.checkCtorFirst()) return
+    if (this.checkFieldOrder()) return
+    this.checkMethodOrder()
+  }
+
+  private checkCtorFirst(): boolean {
+    const ctorIdx = this.members.findIndex((member) => member.kind === 'constructor')
+    if (ctorIdx <= 0) return false
+    this.report('constructorFirst', this.members[ctorIdx])
+    return true
+  }
+
+  private checkFieldOrder(): boolean {
+    const ctorIdx = this.members.findIndex((member) => member.kind === 'constructor')
+    if (ctorIdx < 0) return false
+    for (const field of this.members.filter((member) => member.isPublic)) {
+      if (field.idx <= ctorIdx) continue
+      if (this.members.slice(ctorIdx + 1, field.idx).some((member) => member.kind === 'method')) {
+        this.report('publicFieldOrder', field)
+        return true
+      }
+    }
+    return false
+  }
+
+  private checkMethodOrder(): void {
+    const methods = this.members.filter((member) => member.kind === 'method')
+    const cyclic = findCyclicMethods(methods)
+    for (const method of methods) {
+      if (!method.name || cyclic.has(method.name)) continue
+      if (
+        methods.some(
+          (other) => other !== method && other.thisDeps.has(method.name!) && other.idx > method.idx,
+        )
+      ) {
+        this.report('moveMemberBelow', method)
+        return
+      }
+    }
+  }
+
+  private report(messageId: string, target: MemberEntry): void {
+    const data = target.name && messageId === 'moveMemberBelow' ? { name: target.name } : {}
+    this.context.report({
+      node: target.node,
+      messageId,
+      data,
+      fix: this.hasComputedMembers
+        ? null
+        : buildClassFix(this.context, this.members, this.classBody),
+    })
   }
 }
 
@@ -101,38 +124,6 @@ function methodReachesSelf(
     if (methodReachesSelf(target, dep, byName, visited)) return true
   }
   return false
-}
-
-interface ReportArgs {
-  ctx: Rule.RuleContext
-  members: MemberEntry[]
-  classBody: Node & Rule.NodeParentExtension
-  hasComputed: boolean
-  messageId: string
-  target: MemberEntry
-}
-
-function report(
-  ctx: Rule.RuleContext,
-  members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
-  hasComputed: boolean,
-  messageId: string,
-  target: MemberEntry,
-): void {
-  const input: ReportArgs = { ctx, members, classBody, hasComputed, messageId, target }
-  doReport(input)
-}
-
-function doReport(input: ReportArgs): void {
-  const { ctx, members, classBody, hasComputed, messageId, target } = input
-  const data = target.name && messageId === 'moveMemberBelow' ? { name: target.name } : {}
-  ctx.report({
-    node: target.node,
-    messageId,
-    data,
-    fix: hasComputed ? null : buildClassFix(ctx, members, classBody),
-  })
 }
 
 function buildClassFix(

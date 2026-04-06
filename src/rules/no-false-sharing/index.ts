@@ -7,12 +7,9 @@ import type { Rule } from 'eslint'
 import type { ExportNamedDeclaration, Program } from 'estree'
 
 import {
+  ArchitecturePolicyResolver,
   getDeclarationNamesFromExport,
-  isPublicEntrypoint,
-  matchFileToArchitectureModule,
   normalizePath,
-  readArchitecturePolicy,
-  resolveImportTarget,
 } from '../../utils/index.js'
 
 export default {
@@ -32,60 +29,84 @@ export default {
     const filename = context.filename
     if (!filename) return {}
 
-    const policy = readArchitecturePolicy(context)
-    if (policy === undefined) return {}
+    const resolver = ArchitecturePolicyResolver.fromContext(context)
+    if (resolver === undefined) return {}
 
-    const matched = matchFileToArchitectureModule(filename, policy)
+    const matched = resolver.matchFile(filename)
     if (matched === undefined || !matched.policy.shared) return {}
-    if (!isPublicEntrypoint(filename)) return {}
+    if (!resolver.isPublicEntrypoint(filename)) return {}
 
-    const sourceRoot = policy.sourceRoot
+    const sourceRoot = resolver.sourceRoot
     if (sourceRoot === undefined) return {}
 
     const projectRoot = deriveProjectRoot(filename, sourceRoot)
     if (projectRoot === undefined) return {}
     const sourceDir = node_path.join(projectRoot, sourceRoot)
+    const analyzer = new NoFalseSharingAnalyzer(context, {
+      resolver,
+      entrypointFile: filename,
+      sourceDir,
+    })
 
     return {
       Program(node) {
-        reportUnsharedSymbols(context, node, {
-          entrypointFile: filename,
-          sourceDir,
-          sourceRoot,
-        })
+        analyzer.analyzeProgram(node)
       },
     }
   },
 } satisfies Rule.RuleModule
 
-function reportUnsharedSymbols(
-  context: Rule.RuleContext,
-  node: Program,
-  options: SymbolAnalysisOptions,
-): void {
-  const exportedSymbols = collectExportedSymbols(node)
-  if (exportedSymbols.length === 0) return
-
-  const consumerGroupsBySymbol = findConsumerGroupsBySymbol(
-    options.entrypointFile,
-    options.sourceDir,
-    options.sourceRoot,
-    exportedSymbols,
-  )
-
-  for (const symbol of exportedSymbols) {
-    const consumerGroups = consumerGroupsBySymbol.get(symbol)
-    if (consumerGroups !== undefined && consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
-    const groups = consumerGroups ?? new Set<string>()
-    context.report({
-      node,
-      messageId: 'notTrulyShared',
-      data: {
-        symbol,
-        consumerCount: String(groups.size),
-        consumerGroup: getSingleConsumerGroup(groups),
-      },
+class NoFalseSharingAnalyzer {
+  constructor(
+    private readonly context: Rule.RuleContext,
+    private readonly options: SymbolAnalysisOptions,
+  ) {
+    this.scanner = new SymbolUsageScanner({
+      resolver: options.resolver,
+      entrypointFile: options.entrypointFile,
     })
+  }
+
+  private readonly scanner: SymbolUsageScanner
+
+  analyzeProgram(node: Program): void {
+    const exportedSymbols = collectExportedSymbols(node)
+    if (exportedSymbols.length === 0) return
+
+    const consumerGroupsBySymbol = this.findConsumerGroupsBySymbol(exportedSymbols)
+    this.reportUnsharedSymbols(node, exportedSymbols, consumerGroupsBySymbol)
+  }
+
+  private findConsumerGroupsBySymbol(exportedSymbols: string[]): Map<string, Set<string>> {
+    const bySymbol = initializeConsumerGroupsBySymbol(exportedSymbols)
+    const importers = this.scanner.scanSourceTree(this.options.sourceDir, new Set(exportedSymbols))
+    for (const importer of importers) {
+      const consumerGroup = getConsumerGroup(importer.filePath, this.options.sourceDir)
+      for (const symbol of importer.symbols) {
+        bySymbol.get(symbol)?.add(consumerGroup)
+      }
+    }
+    return bySymbol
+  }
+
+  private reportUnsharedSymbols(
+    node: Program,
+    exportedSymbols: string[],
+    consumerGroupsBySymbol: Map<string, Set<string>>,
+  ): void {
+    for (const symbol of exportedSymbols) {
+      const groups = consumerGroupsBySymbol.get(symbol) ?? new Set<string>()
+      if (groups.size >= MIN_CONSUMER_GROUPS) continue
+      this.context.report({
+        node,
+        messageId: 'notTrulyShared',
+        data: {
+          symbol,
+          consumerCount: String(groups.size),
+          consumerGroup: getSingleConsumerGroup(groups),
+        },
+      })
+    }
   }
 }
 
@@ -100,6 +121,14 @@ function collectExportedSymbols(program: Program): string[] {
   return [...symbols]
 }
 
+function initializeConsumerGroupsBySymbol(exportedSymbols: string[]): Map<string, Set<string>> {
+  const bySymbol = new Map<string, Set<string>>()
+  for (const symbol of exportedSymbols) {
+    bySymbol.set(symbol, new Set<string>())
+  }
+  return bySymbol
+}
+
 function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<string>): void {
   for (const specifier of node.specifiers) {
     if (specifier.exported.type !== 'Identifier') continue
@@ -109,43 +138,6 @@ function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<st
   for (const name of getDeclarationNamesFromExport(node.declaration)) {
     symbols.add(name)
   }
-}
-
-function findConsumerGroupsBySymbol(
-  entrypointFile: string,
-  sourceDir: string,
-  sourceRoot: string,
-  exportedSymbols: string[],
-): Map<string, Set<string>> {
-  const bySymbol = new Map<string, Set<string>>()
-  for (const symbol of exportedSymbols) {
-    bySymbol.set(symbol, new Set<string>())
-  }
-
-  const importers = findImporters(entrypointFile, sourceDir, sourceRoot, new Set(exportedSymbols))
-  for (const importer of importers) {
-    const consumerGroup = getConsumerGroup(importer.filePath, sourceDir)
-    for (const symbol of importer.symbols) {
-      bySymbol.get(symbol)?.add(consumerGroup)
-    }
-  }
-  return bySymbol
-}
-
-function findImporters(
-  entrypointFile: string,
-  sourceDir: string,
-  sourceRoot: string,
-  exportedSymbols: Set<string>,
-): SymbolImporter[] {
-  const options: ConsumerScanOptions = {
-    entrypointFile,
-    sourceRoot,
-    exportedSymbols,
-    importers: [],
-  }
-  scanDir(sourceDir, options)
-  return options.importers
 }
 
 function getConsumerGroup(importerPath: string, sourceDir: string): string {
@@ -170,85 +162,95 @@ function deriveProjectRoot(filename: string, sourceRoot: string): string | undef
   return normalized.slice(0, index)
 }
 
-interface SymbolAnalysisOptions {
-  entrypointFile: string
-  sourceDir: string
-  sourceRoot: string
-}
-
 // eslint-disable-next-line unslop/read-friendly-order
 const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
 
-function scanDir(dir: string, options: ConsumerScanOptions): void {
-  let entries: node_fs.Dirent[]
-  try {
-    entries = node_fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return
+class SymbolUsageScanner {
+  constructor(private readonly options: ScannerOptions) {}
+
+  scanSourceTree(sourceDir: string, exportedSymbols: Set<string>): SymbolImporter[] {
+    const importers: SymbolImporter[] = []
+    this.scanDir(sourceDir, { exportedSymbols, importers })
+    return importers
   }
 
-  for (const entry of entries) {
+  private scanDir(dir: string, state: ScanState): void {
+    const entries = readDirectoryEntries(dir)
+    if (entries === undefined) return
+    for (const entry of entries) {
+      this.scanEntry(dir, entry, state)
+    }
+  }
+
+  private scanEntry(dir: string, entry: node_fs.Dirent, state: ScanState): void {
     const fullPath = node_path.join(dir, entry.name)
     if (entry.isDirectory()) {
-      scanDirectoryEntry(fullPath, options)
-      continue
+      this.scanDirectory(fullPath, state)
+      return
     }
-    scanFileEntry(fullPath, options)
+    this.scanFile(fullPath, state)
+  }
+
+  private scanDirectory(directoryPath: string, state: ScanState): void {
+    const baseName = node_path.basename(directoryPath)
+    if (baseName === 'node_modules' || baseName === '.git') return
+    this.scanDir(directoryPath, state)
+  }
+
+  private scanFile(filePath: string, state: ScanState): void {
+    if (!isSourceFile(filePath)) return
+    if (normalizePath(filePath) === normalizePath(this.options.entrypointFile)) return
+    const symbols = this.getImportedSymbols(filePath, state.exportedSymbols)
+    if (symbols.length === 0) return
+    state.importers.push({ filePath, symbols })
+  }
+
+  private getImportedSymbols(filePath: string, exportedSymbols: Set<string>): string[] {
+    const content = readFileContent(filePath)
+    if (content === undefined) return []
+    const result = new Set<string>()
+    const matcher = new RegExp(LOCAL_SOURCE_RE)
+    let match: RegExpExecArray | null
+    while ((match = matcher.exec(content)) !== null) {
+      const clause = match[1]
+      const specifier = match[2]
+      const resolvedTarget = this.options.resolver.resolveImportTarget(filePath, specifier)
+      if (!isSamePath(resolvedTarget, this.options.entrypointFile)) continue
+      this.addMatchingNamedSymbols(result, clause, exportedSymbols)
+    }
+    return [...result]
+  }
+
+  private addMatchingNamedSymbols(
+    result: Set<string>,
+    clause: string,
+    exportedSymbols: Set<string>,
+  ): void {
+    for (const name of extractNamedSymbols(clause)) {
+      if (!exportedSymbols.has(name)) continue
+      result.add(name)
+    }
   }
 }
 
-function scanDirectoryEntry(directoryPath: string, options: ConsumerScanOptions): void {
-  const baseName = node_path.basename(directoryPath)
-  if (baseName === 'node_modules' || baseName === '.git') return
-  scanDir(directoryPath, options)
-}
-
-function scanFileEntry(filePath: string, options: ConsumerScanOptions): void {
-  if (!isSourceFile(filePath)) return
-  if (normalizePath(filePath) === normalizePath(options.entrypointFile)) return
-
-  const symbols = getImportedSymbols(
-    filePath,
-    options.entrypointFile,
-    options.sourceRoot,
-    options.exportedSymbols,
-  )
-  if (symbols.length === 0) return
-  options.importers.push({ filePath, symbols })
+function readDirectoryEntries(dir: string): node_fs.Dirent[] | undefined {
+  try {
+    return node_fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return undefined
+  }
 }
 
 function isSourceFile(filePath: string): boolean {
   return /\.[jt]sx?$/.test(filePath)
 }
 
-function getImportedSymbols(
-  filePath: string,
-  entrypointFile: string,
-  sourceRoot: string,
-  exportedSymbols: Set<string>,
-): string[] {
-  let content: string
+function readFileContent(filePath: string): string | undefined {
   try {
-    content = node_fs.readFileSync(filePath, 'utf-8')
+    return node_fs.readFileSync(filePath, 'utf-8')
   } catch {
-    return []
+    return undefined
   }
-
-  const result = new Set<string>()
-  const matcher = new RegExp(LOCAL_SOURCE_RE)
-  let match: RegExpExecArray | null
-  while ((match = matcher.exec(content)) !== null) {
-    const clause = match[1]
-    const specifier = match[2]
-    const resolvedTarget = resolveImportTarget(filePath, sourceRoot, specifier)
-    if (!isSamePath(resolvedTarget, entrypointFile)) continue
-    const names = extractNamedSymbols(clause)
-    for (const name of names) {
-      if (!exportedSymbols.has(name)) continue
-      result.add(name)
-    }
-  }
-  return [...result]
 }
 
 function isSamePath(value: string | undefined, expected: string): boolean {
@@ -287,9 +289,18 @@ interface SymbolImporter {
   symbols: string[]
 }
 
-interface ConsumerScanOptions {
+interface SymbolAnalysisOptions {
+  resolver: ArchitecturePolicyResolver
   entrypointFile: string
-  sourceRoot: string
+  sourceDir: string
+}
+
+interface ScannerOptions {
+  resolver: ArchitecturePolicyResolver
+  entrypointFile: string
+}
+
+interface ScanState {
   exportedSymbols: Set<string>
   importers: SymbolImporter[]
 }

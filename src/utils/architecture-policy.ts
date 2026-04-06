@@ -4,7 +4,38 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
+export class ArchitecturePolicyResolver {
+  constructor(private readonly policy: ArchitecturePolicy) {}
+
+  static fromContext(context: Rule.RuleContext): ArchitecturePolicyResolver | undefined {
+    const policy = readArchitecturePolicy(context)
+    if (policy === undefined) return undefined
+    return new ArchitecturePolicyResolver(policy)
+  }
+
+  matchFile(filePath: string): MatchedArchitectureModule | undefined {
+    const normalized = normalizePath(filePath)
+    const candidatePath = applySourceRoot(normalized, this.policy.sourceRoot)
+    if (candidatePath === undefined) return undefined
+    const segments = splitPathSegments(candidatePath)
+    const matches = collectModuleMatches(segments, this.policy.modules)
+    return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+  }
+
+  resolveImportTarget(importerFile: string, specifier: string): string | undefined {
+    return resolveImportTarget(importerFile, this.policy.sourceRoot, specifier)
+  }
+
+  isPublicEntrypoint(filePath: string): boolean {
+    return isPublicEntrypoint(filePath)
+  }
+
+  get sourceRoot(): string | undefined {
+    return this.policy.sourceRoot
+  }
+}
+
+function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
   const unslopSettings = getUnslopSettings(context.settings)
   if (unslopSettings === undefined) return undefined
 
@@ -80,18 +111,6 @@ function isValidMatcher(matcher: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-export function matchFileToArchitectureModule(
-  filePath: string,
-  policy: ArchitecturePolicy,
-): MatchedArchitectureModule | undefined {
-  const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.sourceRoot)
-  if (candidatePath === undefined) return undefined
-  const segments = splitPathSegments(candidatePath)
-  const matches = collectModuleMatches(segments, policy.modules)
-  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
 }
 
 function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
@@ -209,7 +228,7 @@ function countWildcards(value: string): number {
   return value.split('*').length - 1
 }
 
-export function resolveImportTarget(
+function resolveImportTarget(
   importerFile: string,
   sourceRoot: string | undefined,
   specifier: string,
@@ -301,7 +320,7 @@ const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
 
 const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
-export function isPublicEntrypoint(filePath: string): boolean {
+function isPublicEntrypoint(filePath: string): boolean {
   return ENTRYPOINT_FILES.has(node_path.basename(filePath))
 }
 

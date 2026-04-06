@@ -4,13 +4,7 @@ import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } 
 
 import node_path from 'node:path'
 
-import {
-  isPublicEntrypoint,
-  matchFileToArchitectureModule,
-  normalizePath,
-  readArchitecturePolicy,
-  resolveImportTarget,
-} from '../../utils/index.js'
+import { ArchitecturePolicyResolver, normalizePath } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -32,18 +26,18 @@ export default {
     const filename = context.filename
     if (!filename) return {}
 
-    const policy = readArchitecturePolicy(context)
-    if (policy === undefined) return {}
+    const resolver = ArchitecturePolicyResolver.fromContext(context)
+    if (resolver === undefined) return {}
 
     return {
       ImportDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, filename, resolver)
       },
       ExportNamedDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, filename, resolver)
       },
       ExportAllDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, filename, resolver)
       },
     }
   },
@@ -53,18 +47,18 @@ function checkDeclaration(
   context: Rule.RuleContext,
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   filename: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
+  resolver: ArchitecturePolicyResolver,
 ): void {
   const specifier = getSpecifier(node)
   if (specifier === undefined) return
 
-  const importer = getImporter(filename, policy)
+  const importer = getImporter(filename, resolver)
   if (importer === undefined) return
 
-  const targetFile = getTargetFile(filename, policy.sourceRoot, specifier)
+  const targetFile = getTargetFile(filename, resolver, specifier)
   if (targetFile === undefined) return
 
-  const importee = getImportee(targetFile, policy)
+  const importee = getImportee(targetFile, resolver)
   if (importee === undefined) return
 
   checkModuleEdge({
@@ -75,6 +69,7 @@ function checkDeclaration(
     importer,
     importee,
     targetFile,
+    resolver,
   })
 }
 
@@ -86,27 +81,21 @@ function getSpecifier(
   return typeof source.value === 'string' ? source.value : undefined
 }
 
-function getImporter(
-  filename: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(filename, policy)
+function getImporter(filename: string, resolver: ArchitecturePolicyResolver) {
+  return resolver.matchFile(filename)
 }
 
 function getTargetFile(
   filename: string,
-  sourceRoot: string | undefined,
+  resolver: ArchitecturePolicyResolver,
   specifier: string,
 ): string | undefined {
-  const resolved = resolveImportTarget(filename, sourceRoot, specifier)
+  const resolved = resolver.resolveImportTarget(filename, specifier)
   return resolved === undefined ? undefined : normalizePath(resolved)
 }
 
-function getImportee(
-  targetFile: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(targetFile, policy)
+function getImportee(targetFile: string, resolver: ArchitecturePolicyResolver) {
+  return resolver.matchFile(targetFile)
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
@@ -121,7 +110,7 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (isShallowRelativeEntrypoint(specifier, targetFile)) return
+  if (isShallowRelativeEntrypoint(specifier, targetFile, options.resolver)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
     context.report({
@@ -132,7 +121,7 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (isPublicEntrypoint(targetFile)) return
+  if (options.resolver.isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
 }
 
@@ -143,9 +132,15 @@ function isLocalNamespaceImport(
   return node.specifiers.some((specifier) => specifier.type === 'ImportNamespaceSpecifier')
 }
 
-function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {
+function isShallowRelativeEntrypoint(
+  specifier: string,
+  targetFile: string,
+  resolver: ArchitecturePolicyResolver,
+): boolean {
   return (
-    !isRelativeTooDeep(specifier) && specifier.startsWith('./') && isPublicEntrypoint(targetFile)
+    !isRelativeTooDeep(specifier) &&
+    specifier.startsWith('./') &&
+    resolver.isPublicEntrypoint(targetFile)
   )
 }
 
@@ -154,9 +149,10 @@ interface EdgeCheckOptions {
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
   specifier: string
   importerFile: string
-  importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
-  importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
+  importer: NonNullable<ReturnType<ArchitecturePolicyResolver['matchFile']>>
+  importee: NonNullable<ReturnType<ArchitecturePolicyResolver['matchFile']>>
   targetFile: string
+  resolver: ArchitecturePolicyResolver
 }
 
 function reportDeepSameModuleImport(
