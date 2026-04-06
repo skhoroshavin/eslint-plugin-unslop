@@ -64,7 +64,7 @@ scenario('exported constant defined before unexported helper is allowed', rule, 
   ].join('\n'),
 })
 
-scenario('helper declared below its consumer (export default) is the correct band order', rule, {
+scenario('helper declared above its consumer is flagged and moved below by autofix', rule, {
   code: [
     "import value from './value.js'",
     '',
@@ -76,8 +76,18 @@ scenario('helper declared below its consumer (export default) is the correct ban
     '  },',
     '}',
   ].join('\n'),
-  // With banding, export default is in band 3 (local public API) above helper in band 4 (private)
-  // No violation since helper is correctly placed in the private band
+  errors: [{ messageId: 'moveHelperBelow' }],
+  output: [
+    "import value from './value.js'",
+    '',
+    'export default {',
+    '  create() {',
+    '    return helper()',
+    '  },',
+    '}',
+    '',
+    'function helper() { return value }',
+  ].join('\n'),
 })
 
 scenario(
@@ -152,17 +162,17 @@ scenario('exported constant above function that uses it is flagged and moved bel
   ].join('\n'),
   errors: [{ messageId: 'moveConstantBelow' }],
   output: [
-    'export { MAX_COUNT }',
-    '',
     'export function limit() {',
     '  return Math.min(MAX_COUNT, 10)',
     '}',
+    '',
+    'export { MAX_COUNT }',
     '',
     'const MAX_COUNT = 3',
   ].join('\n'),
 })
 
-scenario('export const above class that uses it is flagged and moved below', rule, {
+scenario('export const stays in public API band above private class', rule, {
   code: [
     'export const MAX_COUNT = 3',
     '',
@@ -174,18 +184,8 @@ scenario('export const above class that uses it is flagged and moved below', rul
     '  value = 0',
     '}',
   ].join('\n'),
-  errors: [{ messageId: 'moveConstantBelow' }],
-  output: [
-    'class Limiter {',
-    '  constructor() {',
-    '    this.value = MAX_COUNT',
-    '  }',
-    '',
-    '  value = 0',
-    '}',
-    '',
-    'export const MAX_COUNT = 3',
-  ].join('\n'),
+  // With banding, export const is in band 3 (public API) and class is in band 4 (private)
+  // No violation since the order is correct
 })
 
 scenario('internal constant above exported function is flagged and moved below', rule, {

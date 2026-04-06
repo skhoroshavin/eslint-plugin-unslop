@@ -10,6 +10,8 @@ import {
   isReexportNode,
   isLocalExportList,
   isLocalExportDefault,
+  isLocalPublicExport,
+  getDeclKind,
 } from './ast-utils.js'
 
 import { checkClass } from './class-order.js'
@@ -52,10 +54,8 @@ export default {
 function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtension): void {
   const entries = collectEntries(p)
 
-  // Filter to only private declarations (not imports, external re-exports, or local public API)
-  const decls = entries.filter(
-    (e) => !e.isImport && !e.isExternalReexport && !e.isLocalExportList && !e.isLocalExportDefault,
-  )
+  // Filter to declarations (not imports or external re-exports)
+  const decls = entries.filter((e) => !e.isImport && !e.isExternalReexport)
   filterDepsToLocal(decls)
   const eager = buildEagerSet(decls)
   const cyclic = findCyclic(decls)
@@ -73,13 +73,7 @@ function collectEntries(p: Program): Entry[] {
     const isExternalReexport = isReexportNode(stmt)
     const isLocalExport = isLocalExportList(stmt)
     const isExportDefault = isLocalExportDefault(stmt)
-    // Private declarations are neither imports, external re-exports, nor local public API exports
-    const isPrivate =
-      !stmt.type.includes('Import') &&
-      !stmt.type.includes('Export') &&
-      !isExternalReexport &&
-      !isLocalExport &&
-      !isExportDefault
+    const isPublicExport = isLocalPublicExport(stmt)
 
     entries.push({
       node: stmt,
@@ -91,7 +85,7 @@ function collectEntries(p: Program): Entry[] {
       isExternalReexport: isExternalReexport,
       isLocalExportList: isLocalExport,
       isLocalExportDefault: isExportDefault,
-      isPrivateDecl: isPrivate,
+      isLocalPublicExport: isPublicExport,
     })
   }
   return entries
@@ -181,9 +175,25 @@ function findViolations(decls: Entry[], eager: Set<string>, cyclic: Set<string>)
   for (const e of decls) {
     if (!e.name || eager.has(e.name) || cyclic.has(e.name)) continue
     const consumer = firstConsumer(e.name, decls)
-    if (consumer && e.idx < consumer.idx) violations.push(e)
+    if (!consumer) continue
+    // Check if this is a real violation:
+    // 1. Declaration comes before consumer in source (e.idx < consumer.idx)
+    // 2. AND declaration is in same or lower band than consumer
+    //    (if declaration is in higher band, it's correct for it to come first)
+    const eBand = getBand(e)
+    const consumerBand = getBand(consumer)
+    if (e.idx < consumer.idx && eBand >= consumerBand) {
+      violations.push(e)
+    }
   }
   return violations
+}
+
+function getBand(entry: Entry): number {
+  if (entry.isImport) return 1
+  if (entry.isExternalReexport) return 2
+  if (entry.isLocalExportList || entry.isLocalExportDefault || entry.isLocalPublicExport) return 3
+  return 4 // private declarations
 }
 
 function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
@@ -257,8 +267,10 @@ function buildTopFix(
     // Band 2: external re-exports (export ... from ...)
     const externalReexports = entries.filter((e) => e.isExternalReexport)
 
-    // Band 3: local public API (local export declarations and lists)
-    const localPublicApi = entries.filter((e) => e.isLocalExportList || e.isLocalExportDefault)
+    // Band 3: local public API (local export declarations, lists, and default)
+    const localPublicApi = entries.filter(
+      (e) => e.isLocalExportList || e.isLocalExportDefault || e.isLocalPublicExport,
+    )
     const sortedPublicApi = kahnsSort(localPublicApi)
 
     // Prioritize export default at the top of local public API band if present
@@ -268,10 +280,14 @@ function buildTopFix(
       ? [exportDefaultEntry, ...otherPublicApi]
       : otherPublicApi
 
-    // Band 4: private declarations (everything else)
+    // Band 4: private declarations (not imports, external re-exports, or local public API)
     const privateDecls = entries.filter(
       (e) =>
-        !e.isImport && !e.isExternalReexport && !e.isLocalExportList && !e.isLocalExportDefault,
+        !e.isImport &&
+        !e.isExternalReexport &&
+        !e.isLocalExportList &&
+        !e.isLocalExportDefault &&
+        !e.isLocalPublicExport,
     )
     const sortedPrivate = kahnsSort(privateDecls)
 
@@ -307,8 +323,29 @@ function drainKahns(
   const queue = decls.filter((e) => !e.name || inDeg.get(e.name) === 0)
   const result: Entry[] = []
   const placed = new Set<string>()
+
+  // Priority: constants (0) < types (1) < functions (2) < other (3)
+  const kindPriority = (e: Entry): number => {
+    const kind = getDeclKind(e.node as unknown as import('estree').Node)
+    switch (kind) {
+      case 'constant':
+        return 0
+      case 'type':
+        return 1
+      case 'function':
+        return 2
+      default:
+        return 3
+    }
+  }
+
   while (queue.length > 0) {
-    queue.sort((a, b) => a.idx - b.idx)
+    // Sort by: 1) kind priority (constants first), 2) original index
+    queue.sort((a, b) => {
+      const priorityDiff = kindPriority(a) - kindPriority(b)
+      if (priorityDiff !== 0) return priorityDiff
+      return a.idx - b.idx
+    })
     const e = queue.shift()!
     result.push(e)
     if (e.name) placed.add(e.name)
@@ -337,5 +374,5 @@ interface Entry {
   isExternalReexport: boolean
   isLocalExportList: boolean
   isLocalExportDefault: boolean
-  isPrivateDecl: boolean
+  isLocalPublicExport: boolean
 }
