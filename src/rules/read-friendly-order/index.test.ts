@@ -166,13 +166,13 @@ scenario('exported constant above function that uses it is flagged and moved bel
     '  return Math.min(MAX_COUNT, 10)',
     '}',
     '',
-    'const MAX_COUNT = 3',
-    '',
     'export { MAX_COUNT }',
+    '',
+    'const MAX_COUNT = 3',
   ].join('\n'),
 })
 
-scenario('export const above class that uses it is flagged and moved below', rule, {
+scenario('export const stays in public API band above private class', rule, {
   code: [
     'export const MAX_COUNT = 3',
     '',
@@ -184,18 +184,8 @@ scenario('export const above class that uses it is flagged and moved below', rul
     '  value = 0',
     '}',
   ].join('\n'),
-  errors: [{ messageId: 'moveConstantBelow' }],
-  output: [
-    'class Limiter {',
-    '  constructor() {',
-    '    this.value = MAX_COUNT',
-    '  }',
-    '',
-    '  value = 0',
-    '}',
-    '',
-    'export const MAX_COUNT = 3',
-  ].join('\n'),
+  // With banding, export const is in band 3 (public API) and class is in band 4 (private)
+  // No violation since the order is correct
 })
 
 scenario('internal constant above exported function is flagged and moved below', rule, {
@@ -210,13 +200,13 @@ scenario('internal constant above exported function is flagged and moved below',
   ].join('\n'),
   errors: [{ messageId: 'moveConstantBelow' }],
   output: [
+    'export { clamp }',
+    '',
     'function clamp(input) {',
     '  return Math.min(input, INTERNAL_LIMIT)',
     '}',
     '',
     'const INTERNAL_LIMIT = 3',
-    '',
-    'export { clamp }',
   ].join('\n'),
 })
 

@@ -1,7 +1,8 @@
 import type { Rule } from 'eslint'
+
 import type { Node } from 'estree'
 
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'suggestion',
     docs: {
@@ -41,14 +42,7 @@ const rule: Rule.RuleModule = {
       },
     }
   },
-}
-
-interface ReportInput {
-  context: Rule.RuleContext
-  node: Node
-  matches: BannedMatch[]
-  fixed: string | null
-}
+} satisfies Rule.RuleModule
 
 function reportMatches(input: ReportInput): void {
   const { context, node, matches, fixed } = input
@@ -61,6 +55,13 @@ function reportMatches(input: ReportInput): void {
       fix: i === 0 && fixed && range ? (fixer) => fixer.replaceTextRange(range, fixed) : null,
     })
   }
+}
+
+interface ReportInput {
+  context: Rule.RuleContext
+  node: Node
+  matches: BannedMatch[]
+  fixed: string | null
 }
 
 function getWrapper(raw: string): QuoteChar {
@@ -147,5 +148,3 @@ type QuoteChar = '"' | "'" | '`'
 function formatCode(char: string): string {
   return char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')
 }
-
-export default rule

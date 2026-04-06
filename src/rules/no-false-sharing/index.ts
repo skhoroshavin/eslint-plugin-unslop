@@ -1,7 +1,11 @@
 import node_fs from 'node:fs'
+
 import node_path from 'node:path'
+
 import type { Rule } from 'eslint'
+
 import type { ExportNamedDeclaration, Program } from 'estree'
+
 import {
   getDeclarationNamesFromExport,
   isPublicEntrypoint,
@@ -11,11 +15,7 @@ import {
   resolveImportTarget,
 } from '../../utils/index.js'
 
-const MIN_CONSUMER_GROUPS = 2
-
-const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
-
-const rule: Rule.RuleModule = {
+export default {
   meta: {
     type: 'suggestion',
     docs: {
@@ -56,7 +56,7 @@ const rule: Rule.RuleModule = {
       },
     }
   },
-}
+} satisfies Rule.RuleModule
 
 function reportUnsharedSymbols(
   context: Rule.RuleContext,
@@ -88,6 +88,8 @@ function reportUnsharedSymbols(
     })
   }
 }
+
+const MIN_CONSUMER_GROUPS = 2
 
 function collectExportedSymbols(program: Program): string[] {
   const symbols = new Set<string>()
@@ -145,6 +147,37 @@ function findImporters(
   scanDir(sourceDir, options)
   return options.importers
 }
+
+function getConsumerGroup(importerPath: string, sourceDir: string): string {
+  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
+  const parts = rel.split('/')
+  if (parts.length <= 1) return rel
+  return parts.slice(0, -1).join('/')
+}
+
+function getSingleConsumerGroup(groups: Set<string>): string {
+  if (groups.size === 0) return ' (no consumers found)'
+  if (groups.size !== 1) return ''
+  const [single] = [...groups]
+  return ` (group: ${single})`
+}
+
+function deriveProjectRoot(filename: string, sourceRoot: string): string | undefined {
+  const normalized = normalizePath(filename)
+  const marker = `/${sourceRoot}/`
+  const index = normalized.indexOf(marker)
+  if (index === -1) return undefined
+  return normalized.slice(0, index)
+}
+
+interface SymbolAnalysisOptions {
+  entrypointFile: string
+  sourceDir: string
+  sourceRoot: string
+}
+
+// eslint-disable-next-line unslop/read-friendly-order
+const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
 
 function scanDir(dir: string, options: ConsumerScanOptions): void {
   let entries: node_fs.Dirent[]
@@ -249,37 +282,9 @@ function parseNamedSymbol(raw: string): string | undefined {
   return normalized.length > 0 ? normalized : undefined
 }
 
-function getConsumerGroup(importerPath: string, sourceDir: string): string {
-  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
-  const parts = rel.split('/')
-  if (parts.length <= 1) return rel
-  return parts.slice(0, -1).join('/')
-}
-
-function getSingleConsumerGroup(groups: Set<string>): string {
-  if (groups.size === 0) return ' (no consumers found)'
-  if (groups.size !== 1) return ''
-  const [single] = [...groups]
-  return ` (group: ${single})`
-}
-
-function deriveProjectRoot(filename: string, sourceRoot: string): string | undefined {
-  const normalized = normalizePath(filename)
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  return normalized.slice(0, index)
-}
-
 interface SymbolImporter {
   filePath: string
   symbols: string[]
-}
-
-interface SymbolAnalysisOptions {
-  entrypointFile: string
-  sourceDir: string
-  sourceRoot: string
 }
 
 interface ConsumerScanOptions {
@@ -288,5 +293,3 @@ interface ConsumerScanOptions {
   exportedSymbols: Set<string>
   importers: SymbolImporter[]
 }
-
-export default rule
