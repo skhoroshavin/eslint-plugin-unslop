@@ -151,13 +151,23 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 - **WHEN** a same-module source-root alias import resolves to a path that reaches two or more levels deeper in the same module instance
 - **THEN** `unslop/import-control` MUST report an error
 
-### Requirement: Export control SHALL forbid export-all on module entrypoints
+### Requirement: Export control SHALL forbid export-all declarations
 
-`unslop/export-control` MUST reject `export * from ...` in `index.ts` and `types.ts` for all modules.
+`unslop/export-control` MUST reject `export * from ...` declarations in all files.
 
 #### Scenario: Entrypoint uses export-all
 
 - **WHEN** `index.ts` or `types.ts` contains `export * from ...`
+- **THEN** `unslop/export-control` MUST report an error
+
+#### Scenario: Non-entrypoint file uses export-all
+
+- **WHEN** any non-entrypoint file contains `export * from ...`
+- **THEN** `unslop/export-control` MUST report an error
+
+#### Scenario: Constrained entrypoint uses export-all
+
+- **WHEN** `index.ts` or `types.ts` in a constrained module contains `export * from ...`
 - **THEN** `unslop/export-control` MUST report an error
 
 ### Requirement: Export control SHALL enforce optional symbol contracts on module entrypoints
@@ -178,8 +188,3 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 - **WHEN** a constrained module exports a symbol from `index.ts` or `types.ts` that matches no configured regex
 - **THEN** `unslop/export-control` MUST report an error at the export declaration or re-export site
-
-#### Scenario: Constrained entrypoint uses export-all
-
-- **WHEN** `index.ts` or `types.ts` in a constrained module contains `export * from ...`
-- **THEN** `unslop/export-control` MUST report an error
