@@ -210,7 +210,7 @@ scenario('internal constant above exported function is flagged and moved below',
   ].join('\n'),
 })
 
-scenario('ambiguous comment between helper and consumer suppresses autofix', rule, {
+scenario('comment between helper and consumer stays with the consumer during autofix', rule, {
   code: [
     'function helper() {',
     '  return 1',
@@ -222,7 +222,16 @@ scenario('ambiguous comment between helper and consumer suppresses autofix', rul
     '}',
   ].join('\n'),
   errors: [{ messageId: 'moveHelperBelow' }],
-  output: null,
+  output: [
+    '// keep this note with the reader entrypoint',
+    'export function read() {',
+    '  return helper()',
+    '}',
+    '',
+    'function helper() {',
+    '  return 1',
+    '}',
+  ].join('\n'),
 })
 
 // ─── Eager evaluation exemptions ─────────────────────────────────────────────
@@ -419,6 +428,51 @@ scenario(
       '',
       'interface User {',
       '  id: string',
+      '}',
+    ].join('\n'),
+  },
+)
+
+scenario(
+  'exported types with section comment between groups are reordered with comment preserved',
+  rule,
+  {
+    typescript: true,
+    code: [
+      'export type Mode = "a" | "b"',
+      '',
+      'export interface Config {',
+      '  mode: Mode',
+      '}',
+      '',
+      'export interface Entry {',
+      '  name: string',
+      '  config: Config',
+      '}',
+      '',
+      '// --- Structured data types ---',
+      '',
+      'export interface Metadata {',
+      '  title: string',
+      '}',
+    ].join('\n'),
+    errors: [{ messageId: 'moveHelperBelow' }, { messageId: 'moveHelperBelow' }],
+    output: [
+      'export interface Entry {',
+      '  name: string',
+      '  config: Config',
+      '}',
+      '',
+      'export interface Config {',
+      '  mode: Mode',
+      '}',
+      '',
+      'export type Mode = "a" | "b"',
+      '',
+      '// --- Structured data types ---',
+      '',
+      'export interface Metadata {',
+      '  title: string',
       '}',
     ].join('\n'),
   },

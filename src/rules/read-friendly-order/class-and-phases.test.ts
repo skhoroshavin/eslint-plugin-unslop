@@ -158,6 +158,27 @@ scenario('computed method name suppresses class member autofix', rule, {
   output: null,
 })
 
+scenario('mutually recursive class methods are allowed in any order', rule, {
+  typescript: true,
+  code: [
+    'class Queue {',
+    '  constructor() {}',
+    '',
+    '  submit() {',
+    '    this.startTask()',
+    '  }',
+    '',
+    '  private processNext() {',
+    '    this.startTask()',
+    '  }',
+    '',
+    '  private startTask() {',
+    '    this.processNext()',
+    '  }',
+    '}',
+  ].join('\n'),
+})
+
 // ─── Test phase ordering ──────────────────────────────────────────────────────
 
 scenario('beforeEach before afterEach before test calls is allowed', rule, {
