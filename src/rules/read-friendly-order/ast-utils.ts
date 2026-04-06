@@ -192,6 +192,10 @@ export function isLocalPublicExport(node: Node): boolean {
 export function isEagerInit(node: Node): boolean {
   const t = node.type
   if (t === 'ExpressionStatement' || t === 'IfStatement') return true
+  if (t === 'ExportDefaultDeclaration') {
+    const declType = strProp(prop(node, 'declaration'), 'type')
+    return declType === 'CallExpression' || declType === 'NewExpression'
+  }
   const inner = t === 'ExportNamedDeclaration' ? prop(node, 'declaration') : node
   if (strProp(inner, 'type') !== 'VariableDeclaration') return false
   const decls = prop(inner, 'declarations')

@@ -61,8 +61,7 @@ function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtens
   const cyclic = findCyclic(decls)
   const violations = findViolations(decls, eager, cyclic)
   if (violations.length === 0) return
-  const safe = isFixSafe(ctx, entries)
-  reportAll(ctx, violations, safe, p, entries)
+  reportAll(ctx, violations, p, entries)
 }
 
 function collectEntries(p: Program): Entry[] {
@@ -209,11 +208,10 @@ function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
 function reportAll(
   ctx: Rule.RuleContext,
   violations: Entry[],
-  safe: boolean,
   p: Program & Rule.NodeParentExtension,
   entries: Entry[],
 ): void {
-  doReportAll({ ctx, violations, safe, p, entries })
+  doReportAll({ ctx, violations, p, entries })
 }
 
 function doReportAll(args: ReportAllArgs): void {
@@ -223,7 +221,7 @@ function doReportAll(args: ReportAllArgs): void {
       node: v.node,
       messageId: isConst(v.name!) ? 'moveConstantBelow' : 'moveHelperBelow',
       data: { name: v.name! },
-      fix: args.safe && i === 0 ? buildTopFix(args.ctx, args.p, args.entries) : null,
+      fix: i === 0 ? buildTopFix(args.ctx, args.p, args.entries) : null,
     })
   }
 }
@@ -231,22 +229,8 @@ function doReportAll(args: ReportAllArgs): void {
 interface ReportAllArgs {
   ctx: Rule.RuleContext
   violations: Entry[]
-  safe: boolean
   p: Program & Rule.NodeParentExtension
   entries: Entry[]
-}
-
-function isFixSafe(ctx: Rule.RuleContext, entries: Entry[]): boolean {
-  const src = ctx.sourceCode
-  const stmts = entries.filter((e) => !e.isImport)
-  for (let i = 0; i < stmts.length - 1; i++) {
-    const cur = stmts[i].node
-    const nxt = stmts[i + 1].node
-    for (const c of src.getCommentsBefore(nxt)) {
-      if (c.range![0] > cur.range![1]) return false
-    }
-  }
-  return true
 }
 
 function isConst(name: string): boolean {
@@ -260,6 +244,7 @@ function buildTopFix(
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const src = ctx.sourceCode
+    const nodeTexts = buildNodeTexts(src, entries)
 
     // Band 1: imports
     const imports = entries.filter((e) => e.isImport)
@@ -293,9 +278,27 @@ function buildTopFix(
 
     // Combine all bands in canonical order
     const all = [...imports, ...externalReexports, ...prioritizedPublicApi, ...sortedPrivate]
-    const text = all.map((e) => src.getText(e.node)).join('\n\n')
+    const text = all.map((e) => nodeTexts.get(e)).join('\n\n')
     return fixer.replaceTextRange([p.range![0], p.range![1]], text)
   }
+}
+
+function buildNodeTexts(src: Rule.RuleContext['sourceCode'], entries: Entry[]): Map<Entry, string> {
+  const result = new Map<Entry, string>()
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]
+    const comments = src.getCommentsBefore(e.node)
+    const prevEnd = i > 0 ? entries[i - 1].node.range![1] : e.node.range![0]
+    const leadingComments = comments.filter((c) => c.range![0] >= prevEnd)
+    if (leadingComments.length > 0) {
+      const commentStart = leadingComments[0].range![0]
+      const fullText = src.getText().slice(commentStart, e.node.range![1])
+      result.set(e, fullText)
+    } else {
+      result.set(e, src.getText(e.node))
+    }
+  }
+  return result
 }
 
 function kahnsSort(decls: Entry[]): Entry[] {

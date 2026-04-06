@@ -64,13 +64,43 @@ function checkMethodOrder(
   hasComputed: boolean,
 ): void {
   const methods = members.filter((m) => m.kind === 'method')
+  const cyclic = findCyclicMethods(methods)
   for (const m of methods) {
-    if (!m.name) continue
+    if (!m.name || cyclic.has(m.name)) continue
     if (methods.some((o) => o !== m && o.thisDeps.has(m.name!) && o.idx > m.idx)) {
       report(ctx, members, classBody, hasComputed, 'moveMemberBelow', m)
       return
     }
   }
+}
+
+function findCyclicMethods(methods: MemberEntry[]): Set<string> {
+  const byName = new Map(methods.filter((m) => m.name).map((m) => [m.name!, m]))
+  const inCycle = new Set<string>()
+  for (const [name] of byName) {
+    if (methodReachesSelf(name, name, byName, new Set())) {
+      inCycle.add(name)
+    }
+  }
+  return inCycle
+}
+
+function methodReachesSelf(
+  target: string,
+  current: string,
+  byName: Map<string, MemberEntry>,
+  visited: Set<string>,
+): boolean {
+  const entry = byName.get(current)
+  if (!entry) return false
+  for (const dep of entry.thisDeps) {
+    if (!byName.has(dep)) continue
+    if (dep === target) return true
+    if (visited.has(dep)) continue
+    visited.add(dep)
+    if (methodReachesSelf(target, dep, byName, visited)) return true
+  }
+  return false
 }
 
 interface ReportArgs {

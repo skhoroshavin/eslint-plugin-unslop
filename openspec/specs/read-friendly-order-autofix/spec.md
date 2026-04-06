@@ -2,12 +2,27 @@
 
 ### Requirement: Read-friendly-order exposes canonical autofix
 
-The `read-friendly-order` rule SHALL declare code autofix support and SHALL emit deterministic reorder fixes for all existing reordering diagnostics when a target region is fix-safe and not excluded by eager runtime reachability.
+The `read-friendly-order` rule SHALL declare code autofix support and SHALL emit deterministic reorder fixes for existing reordering diagnostics using top-level public-surface-first bands, while preserving consumer-first ordering within each band when a target region is fix-safe and not excluded by eager runtime reachability.
 
-#### Scenario: Deterministic top-level reorder output
+#### Scenario: Top-level canonical output uses explicit bands
 
-- **WHEN** a file has reorderable top-level helper or constant declarations that violate existing `read-friendly-order` diagnostics, the region passes safety checks, and the symbol is not eagerly reachable from module initialization
-- **THEN** the rule emits a canonical single-pass replacement for the region that resolves the reported ordering violations
+- **WHEN** a file contains reorderable top-level statements covered by `read-friendly-order` diagnostics and the region is fix-safe
+- **THEN** the canonical order MUST be: imports, then external re-exports, then local public API declarations/exports, then private declarations/helpers/constants/types
+
+#### Scenario: External re-exports stay above local public exports
+
+- **WHEN** a file contains both external re-exports (`export ... from ...`, including wildcard form) and local public exports
+- **THEN** the rule MUST place external re-exports immediately after imports and before local public API exports
+
+#### Scenario: Local export default is prioritized in local public API band
+
+- **WHEN** a file contains a local `export default` and other local public exports in a fix-safe region
+- **THEN** the rule MUST place the local `export default` as high as possible within the local public API band unless eager initialization constraints require preserving runtime safety
+
+#### Scenario: Consumer-first ordering applies within each band
+
+- **WHEN** two symbols in the same top-level band have a dependency relationship detectable by existing local dependency analysis
+- **THEN** the consuming symbol MUST be ordered above the symbol it consumes
 
 #### Scenario: Deterministic class-member reorder output
 
