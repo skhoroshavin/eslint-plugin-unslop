@@ -1,6 +1,6 @@
 {
   "name": "eslint-plugin-unslop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "ESLint plugin with rules for reducing AI-generated code smells",
   "repository": {
     "type": "git",
