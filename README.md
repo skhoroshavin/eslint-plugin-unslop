@@ -51,7 +51,7 @@ This turns on:
 | `unslop/export-control`      | error    | Restricts export patterns and forbids `export *` in module entrypoints |
 | `unslop/no-false-sharing`    | error    | Flags shared entrypoint symbols with fewer than two consumer groups    |
 | `unslop/no-special-unicode`  | error    | Catches smart quotes, invisible spaces, and other unicode impostors    |
-| `unslop/no-unicode-escape`   | error    | Prefers `"(c)"` over `"\u00A9"`                                        |
+| `unslop/no-unicode-escape`   | error    | Prefers `"©"` over `"\u00A9"`                                          |
 | `unslop/read-friendly-order` | error    | Enforces top-down, dependency-friendly declaration order               |
 
 The `configs.minimal` config contains only the zero-config symbol fixers (`no-special-unicode` and `no-unicode-escape`). It is included automatically within `configs.full`, or can be used standalone for projects that don't need architecture enforcement:
@@ -245,7 +245,7 @@ function assertCorrect(value) {
 
 ### `unslop/no-special-unicode`
 
-Disallows special unicode punctuation and whitespace characters in string literals and template literals. LLMs love to sprinkle in smart quotes (`"like this"`), non-breaking spaces, and other invisible gremlins that look fine in a PR review but cause fun bugs at runtime.
+Disallows special unicode punctuation and whitespace characters in string literals and template literals. LLMs love to sprinkle in smart quotes (`“like this”`), non-breaking spaces, and other invisible gremlins that look fine in a PR review but cause fun bugs at runtime.
 
 Caught characters include: left/right smart quotes (`“” ‘’`), non-breaking space, en/em dash, horizontal ellipsis, zero-width space, and various other exotic whitespace.
 
@@ -265,7 +265,7 @@ the problem this rule catches.
 
 ### `unslop/no-unicode-escape`
 
-Prefers actual characters over `\uXXXX` escape sequences. If your string says `\u00A9`, just write `(c)` - your coworkers will thank you. LLM-generated code sometimes encodes characters as escape sequences for no good reason.
+Prefers actual characters over `\uXXXX` escape sequences. If your string says `\u00A9`, just write `©` - your coworkers will thank you. LLM-generated code sometimes encodes characters as escape sequences for no good reason.
 
 ```js
 // Bad
@@ -273,8 +273,8 @@ const copyright = '\u00A9 2025'
 const arrow = '\u2192'
 
 // Good
-const copyright = '(c) 2025'
-const arrow = '->'
+const copyright = '© 2025'
+const arrow = '→'
 ```
 
 ## A Note on Provenance
@@ -282,58 +282,6 @@ const arrow = '->'
 Yes, a fair amount of this was vibe-coded with LLM assistance - which is fitting, since that's exactly the context this plugin is designed for. That said, the ideas behind these rules, the decisions about what to catch and how to catch it, and the overall design are mine. Every piece of code went through human review, and the test cases in particular were written and verified with deliberate care.
 
 The project also dogfoods itself: `eslint-plugin-unslop` is linted using `eslint-plugin-unslop`.
-
-## Maintainer: Main Branch Protection
-
-This repository treats `main` as a protected branch with pull-request-only merges.
-
-Baseline policy:
-
-- Require pull requests before merge
-- Require at least 1 approving review
-- Dismiss stale approvals when new commits are pushed
-- Require branch to be up to date before merge
-- Require status check: `PR Gate`
-- Apply restrictions to admins too (`enforce_admins`)
-
-The required check is produced by `.github/workflows/test.yml` (workflow/job name: `PR Gate`) and runs:
-
-1. `npm run verify`
-2. `npm run test`
-
-### Safe Workflow Renames
-
-If you rename the workflow or job that produces `PR Gate`, update branch protection required checks immediately to match the new check context.
-
-Recommended update command:
-
-```bash
-gh api -X PUT repos/skhoroshavin/eslint-plugin-unslop/branches/main/protection \
-  -H "Accept: application/vnd.github+json" \
-  -F 'required_status_checks[strict]=true' \
-  -F 'required_status_checks[contexts][]=PR Gate' \
-  -F 'enforce_admins=true' \
-  -F 'required_pull_request_reviews[dismiss_stale_reviews]=true' \
-  -F 'required_pull_request_reviews[require_code_owner_reviews]=false' \
-  -F 'required_pull_request_reviews[required_approving_review_count]=1' \
-  -F 'restrictions=null'
-```
-
-### Branch Protection Audit
-
-Run these checks periodically:
-
-```bash
-gh api repos/skhoroshavin/eslint-plugin-unslop/branches/main/protection
-gh run list -workflow "Test" -limit 5
-```
-
-Expected audit outcomes:
-
-- `required_status_checks.contexts` includes `Test`
-- `required_pull_request_reviews.required_approving_review_count` is `1` or greater
-- `required_pull_request_reviews.dismiss_stale_reviews` is `true`
-- `enforce_admins.enabled` is `true`
 
 ## Contributing
 
