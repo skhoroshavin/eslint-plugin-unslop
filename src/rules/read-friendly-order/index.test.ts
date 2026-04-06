@@ -265,6 +265,10 @@ scenario('constant used in two subsequent constant initializers is allowed', rul
   code: ['const MAX = 3', '', 'const doubled = MAX * 2', '', 'const tripled = MAX * 3'].join('\n'),
 })
 
+scenario('helper used by eager local export default expression is allowed', rule, {
+  code: ['const buildValue = () => 1', '', 'export default buildValue()'].join('\n'),
+})
+
 scenario('eager entrypoint call before helpers is allowed', rule, {
   code: [
     "if (import.meta.url === 'file:///tmp/run.js') main()",
