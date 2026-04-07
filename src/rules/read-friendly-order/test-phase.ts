@@ -1,11 +1,11 @@
-/* eslint-disable no-restricted-syntax, complexity, unslop/read-friendly-order */
+/* eslint-disable complexity, unslop/read-friendly-order */
 import type { Rule } from 'eslint'
 import type { Node, Program } from 'estree'
 
 type Phase = 'setup' | 'teardown' | 'test'
 
 interface PhaseCall {
-  node: Node & Rule.NodeParentExtension
+  node: Node
   phase: Phase
   idx: number
 }
@@ -14,10 +14,7 @@ const SETUP = new Set(['beforeAll', 'beforeEach'])
 const TEARDOWN = new Set(['afterAll', 'afterEach'])
 const TESTS = new Set(['test', 'it', 'describe'])
 
-export function checkTestPhases(
-  ctx: Rule.RuleContext,
-  p: Program & Rule.NodeParentExtension,
-): void {
+export function checkTestPhases(ctx: Rule.RuleContext, p: Program): void {
   const calls = collectTestCalls(p)
   if (calls.length === 0) return
 
@@ -42,12 +39,12 @@ export function checkTestPhases(
   }
 }
 
-function collectTestCalls(p: Program & Rule.NodeParentExtension): PhaseCall[] {
+function collectTestCalls(p: Program): PhaseCall[] {
   const calls: PhaseCall[] = []
   for (let i = 0; i < p.body.length; i++) {
     const phase = getPhase(p.body[i])
     if (phase) {
-      calls.push({ node: p.body[i] as Node & Rule.NodeParentExtension, phase, idx: i })
+      calls.push({ node: p.body[i], phase, idx: i })
     }
   }
   return calls
@@ -74,28 +71,24 @@ function classifyCallee(name: string): Phase | null {
 
 function buildPhaseFix(
   ctx: Rule.RuleContext,
-  p: Program & Rule.NodeParentExtension,
+  p: Program,
   calls: PhaseCall[],
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const ordered = buildPhaseOrder(p, calls)
-    const text = ordered
-      .map((o) => ctx.sourceCode.getText(o.node as Node & Rule.NodeParentExtension))
-      .join('\n\n')
+    const text = ordered.map((entry) => ctx.sourceCode.getText(entry.node)).join('\n\n')
     return fixer.replaceTextRange([p.range![0], p.range![1]], text)
   }
 }
 
-function buildPhaseOrder(
-  p: Program & Rule.NodeParentExtension,
-  calls: PhaseCall[],
-): Array<{ node: Node; idx: number }> {
+function buildPhaseOrder(p: Program, calls: PhaseCall[]): Array<{ node: Node; idx: number }> {
+  const callsByIndex = new Map(calls.map((call) => [call.idx, call]))
   const others: Array<{ node: Node; idx: number }> = []
   const setups: Array<{ node: Node; idx: number }> = []
   const teardowns: Array<{ node: Node; idx: number }> = []
   const tests: Array<{ node: Node; idx: number }> = []
   for (let i = 0; i < p.body.length; i++) {
-    const call = calls.find((c) => c.idx === i)
+    const call = callsByIndex.get(i)
     if (!call) others.push({ node: p.body[i], idx: i })
     else if (call.phase === 'setup') setups.push({ node: p.body[i], idx: i })
     else if (call.phase === 'teardown') teardowns.push({ node: p.body[i], idx: i })

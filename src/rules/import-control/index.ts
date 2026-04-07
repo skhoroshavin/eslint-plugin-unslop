@@ -83,20 +83,30 @@ function getSpecifier(
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
-  const { context, node, specifier, importer, importee, targetFile, importerFile } = options
-  if (importer.instance === importee.instance) {
-    if (isSameModuleImportTooDeep(importerFile, targetFile)) {
-      context.report({ node, messageId: 'tooDeep' })
-    }
+  if (options.importer.instance === options.importee.instance) {
+    checkSameModuleEdge(options)
     return
   }
+
+  checkCrossModuleEdge(options)
+}
+
+function checkSameModuleEdge(options: EdgeCheckOptions): void {
+  const { context, importerFile, node, targetFile } = options
+  if (isSameModuleImportTooDeep(importerFile, targetFile)) {
+    context.report({ node, messageId: 'tooDeep' })
+  }
+}
+
+function checkCrossModuleEdge(options: EdgeCheckOptions): void {
+  const { context, node, specifier, importer, importee, targetFile, resolver } = options
 
   if (isLocalNamespaceImport(node)) {
     context.report({ node, messageId: 'namespaceLocalForbidden' })
     return
   }
 
-  if (isShallowRelativeEntrypoint(specifier, targetFile, options.resolver)) return
+  if (isShallowRelativeEntrypoint(specifier, targetFile, resolver)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
     context.report({
@@ -107,7 +117,7 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (options.resolver.isPublicEntrypoint(targetFile)) return
+  if (resolver.isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
 }
 
@@ -144,22 +154,19 @@ interface EdgeCheckOptions {
 function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {
   const importerDir = normalizePath(node_path.dirname(importerFile))
   const relativeTarget = normalizePath(node_path.relative(importerDir, targetFile))
-  return isForwardTraversalTooDeep(relativeTarget)
-}
-
-function isForwardTraversalTooDeep(relativeTarget: string): boolean {
-  const segments = relativeTarget.split('/').filter(Boolean)
-  if (segments.length === 0) return false
-  if (segments[0] === '..') return false
-  const depth = Math.max(segments.length - 1, 0)
-  return depth > 1
+  return isDeeperThanOneLevel(relativeTarget)
 }
 
 function isRelativeTooDeep(specifier: string): boolean {
   if (!specifier.startsWith('./')) return false
-  const parts = specifier.slice(2).split('/').filter(Boolean)
-  const depth = Math.max(parts.length - 1, 0)
-  return depth > 1
+  return isDeeperThanOneLevel(specifier.slice(2))
+}
+
+function isDeeperThanOneLevel(pathValue: string): boolean {
+  const segments = pathValue.split('/').filter(Boolean)
+  if (segments.length === 0) return false
+  if (segments[0] === '..') return false
+  return segments.length > 2
 }
 
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {

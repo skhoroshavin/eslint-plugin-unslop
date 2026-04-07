@@ -14,8 +14,7 @@ export class ArchitecturePolicyResolver {
   }
 
   matchFile(filePath: string): MatchedArchitectureModule | undefined {
-    const normalized = normalizePath(filePath)
-    const candidatePath = applySourceRoot(normalized, this.policy.sourceRoot)
+    const candidatePath = getPathWithinSourceRoot(filePath, this.policy.sourceRoot)
     if (candidatePath === undefined) return undefined
     const segments = splitPathSegments(candidatePath)
     const matches = collectModuleMatches(segments, this.policy.modules)
@@ -24,6 +23,11 @@ export class ArchitecturePolicyResolver {
 
   resolveImportTarget(importerFile: string, specifier: string): string | undefined {
     return resolveImportTarget(importerFile, this.policy.sourceRoot, specifier)
+  }
+
+  deriveProjectRoot(filePath: string): string | undefined {
+    if (this.policy.sourceRoot === undefined) return undefined
+    return deriveProjectRoot(filePath, this.policy.sourceRoot)
   }
 
   isPublicEntrypoint(filePath: string): boolean {
@@ -128,6 +132,17 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
 interface ArchitecturePolicy {
   sourceRoot?: string
   modules: ArchitectureModuleDefinition[]
+}
+
+function getPathWithinSourceRoot(pathValue: string, sourceRoot?: string): string | undefined {
+  return applySourceRoot(normalizePath(pathValue), sourceRoot)
+}
+
+function deriveProjectRoot(filePath: string, sourceRoot: string): string | undefined {
+  const normalized = normalizePath(filePath)
+  const markerIndex = findSourceRootMarkerIndex(normalized, sourceRoot)
+  if (markerIndex === -1) return undefined
+  return normalized.slice(0, markerIndex)
 }
 
 function applySourceRoot(pathValue: string, sourceRoot?: string): string | undefined {
@@ -255,10 +270,8 @@ function resolveAliasImport(
   specifier: string,
 ): string | undefined {
   if (sourceRoot === undefined) return undefined
-  const normalized = normalizePath(importerFile)
-  const markerIndex = findSourceRootMarkerIndex(normalized, sourceRoot)
-  if (markerIndex === -1) return undefined
-  const projectRoot = normalized.slice(0, markerIndex)
+  const projectRoot = deriveProjectRoot(importerFile, sourceRoot)
+  if (projectRoot === undefined) return undefined
   const remainder = specifier.slice(2)
   const base = node_path.join(projectRoot, sourceRoot, remainder)
   return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)

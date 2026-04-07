@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, complexity, max-params */
+/* eslint-disable complexity, max-params */
 import type { Rule } from 'eslint'
 
 import type { Node, Program } from 'estree'
@@ -41,12 +41,11 @@ export default {
     const analyzer = new TopLevelOrderAnalyzer(context)
     return {
       Program(pgm) {
-        const p = pgm as unknown as Program & Rule.NodeParentExtension
-        checkTestPhases(context, p)
-        analyzer.analyzeProgram(p)
+        checkTestPhases(context, pgm)
+        analyzer.analyzeProgram(pgm)
       },
       ClassBody(node) {
-        checkClass(context, node as unknown as Node & Rule.NodeParentExtension)
+        checkClass(context, node)
       },
     }
   },
@@ -55,7 +54,7 @@ export default {
 class TopLevelOrderAnalyzer {
   constructor(private readonly context: Rule.RuleContext) {}
 
-  analyzeProgram(program: Program & Rule.NodeParentExtension): void {
+  analyzeProgram(program: Program): void {
     const entries = this.collectEntries(program)
     const declarations = entries.filter(isDeclarationEntry)
     const namedDeclarations = collectNamedEntries(declarations)
@@ -70,7 +69,7 @@ class TopLevelOrderAnalyzer {
   private collectEntries(program: Program): Entry[] {
     const entries: Entry[] = []
     for (let index = 0; index < program.body.length; index++) {
-      const statement = program.body[index] as Node & Rule.NodeParentExtension
+      const statement = program.body[index]
       const name = getDeclName(statement)
       entries.push({
         node: statement,
@@ -171,41 +170,24 @@ class TopLevelOrderAnalyzer {
     return violations
   }
 
-  private reportAll(
-    violations: Entry[],
-    program: Program & Rule.NodeParentExtension,
-    entries: Entry[],
-  ): void {
+  private reportAll(violations: Entry[], program: Program, entries: Entry[]): void {
+    const fix = this.buildTopFix(program, entries)
     for (let index = 0; index < violations.length; index++) {
       const violation = violations[index]
       this.context.report({
         node: violation.node,
         messageId: isConst(violation.name!) ? 'moveConstantBelow' : 'moveHelperBelow',
         data: { name: violation.name! },
-        fix: index === 0 ? this.buildTopFix(program, entries) : null,
+        fix: index === 0 ? fix : null,
       })
     }
   }
 
-  private buildTopFix(
-    program: Program & Rule.NodeParentExtension,
-    entries: Entry[],
-  ): (fixer: Rule.RuleFixer) => Rule.Fix {
+  private buildTopFix(program: Program, entries: Entry[]): (fixer: Rule.RuleFixer) => Rule.Fix {
     return (fixer) => {
       const source = this.context.sourceCode
       const nodeTexts = this.buildNodeTexts(source, entries)
-      const imports = entries.filter((entry) => entry.isImport)
-      const externalReexports = entries.filter((entry) => entry.isExternalReexport)
-      const localPublicApi = entries.filter(isLocalPublicApiEntry)
-      const sortedPublicApi = kahnsSort(localPublicApi)
-      const exportDefaultEntry = sortedPublicApi.find((entry) => entry.isLocalExportDefault)
-      const otherPublicApi = sortedPublicApi.filter((entry) => !entry.isLocalExportDefault)
-      const prioritizedPublicApi = exportDefaultEntry
-        ? [exportDefaultEntry, ...otherPublicApi]
-        : otherPublicApi
-      const privateDecls = entries.filter(isPrivateEntry)
-      const sortedPrivate = kahnsSort(privateDecls)
-      const ordered = [...imports, ...externalReexports, ...prioritizedPublicApi, ...sortedPrivate]
+      const ordered = buildCanonicalOrder(entries)
       const text = ordered.map((entry) => nodeTexts.get(entry)).join('\n\n')
       return fixer.replaceTextRange([program.range![0], program.range![1]], text)
     }
@@ -238,6 +220,21 @@ interface NamedEntries {
   names: Set<string>
 }
 
+function buildCanonicalOrder(entries: Entry[]): Entry[] {
+  return [
+    ...entries.filter(isImportEntry),
+    ...entries.filter(isExternalReexportEntry),
+    ...prioritizeDefaultExport(kahnsSort(entries.filter(isLocalPublicApiEntry))),
+    ...kahnsSort(entries.filter(isPrivateEntry)),
+  ]
+}
+
+function prioritizeDefaultExport(entries: Entry[]): Entry[] {
+  const exportDefaultEntry = entries.find((entry) => entry.isLocalExportDefault)
+  if (exportDefaultEntry === undefined) return entries
+  return [exportDefaultEntry, ...entries.filter((entry) => entry !== exportDefaultEntry)]
+}
+
 function collectNamedEntries(entries: Entry[]): NamedEntries {
   const byName = new Map<string, Entry>()
   for (const entry of entries) {
@@ -256,6 +253,14 @@ function getBand(entry: Entry): number {
 
 function isDeclarationEntry(entry: Entry): boolean {
   return !entry.isImport && !entry.isExternalReexport
+}
+
+function isImportEntry(entry: Entry): boolean {
+  return entry.isImport
+}
+
+function isExternalReexportEntry(entry: Entry): boolean {
+  return entry.isExternalReexport
 }
 
 function isLocalPublicApiEntry(entry: Entry): boolean {
@@ -313,7 +318,7 @@ function drainKahns(
 
   // Priority: constants (0) < types (1) < functions (2) < other (3)
   const kindPriority = (e: Entry): number => {
-    const kind = getDeclKind(e.node as unknown as import('estree').Node)
+    const kind = getDeclKind(e.node)
     switch (kind) {
       case 'constant':
         return 0
@@ -352,7 +357,7 @@ function drainKahns(
 }
 
 interface Entry {
-  node: Node & Rule.NodeParentExtension
+  node: Node
   idx: number
   name: string | null
   deps: Set<string>

@@ -39,7 +39,7 @@ export default {
     const sourceRoot = resolver.sourceRoot
     if (sourceRoot === undefined) return {}
 
-    const projectRoot = deriveProjectRoot(filename, sourceRoot)
+    const projectRoot = resolver.deriveProjectRoot(filename)
     if (projectRoot === undefined) return {}
     const sourceDir = node_path.join(projectRoot, sourceRoot)
     const analyzer = new NoFalseSharingAnalyzer(context, {
@@ -159,52 +159,42 @@ function getSingleConsumerGroup(groups: Set<string>): string {
   return ` (group: ${single})`
 }
 
-function deriveProjectRoot(filename: string, sourceRoot: string): string | undefined {
-  const normalized = normalizePath(filename)
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  return normalized.slice(0, index)
-}
-
 // eslint-disable-next-line unslop/read-friendly-order
 const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
 
 class SymbolUsageScanner {
-  constructor(private readonly options: ScannerOptions) {}
+  constructor(private readonly options: ScannerOptions) {
+    this.entrypointFile = normalizePath(options.entrypointFile)
+  }
+
+  private readonly entrypointFile: string
 
   scanSourceTree(sourceDir: string, exportedSymbols: Set<string>): SymbolImporter[] {
     const importers: SymbolImporter[] = []
-    this.scanDir(sourceDir, { exportedSymbols, importers })
+    this.scanDirectory(sourceDir, { exportedSymbols, importers })
     return importers
-  }
-
-  private scanDir(dir: string, state: ScanState): void {
-    const entries = readDirectoryEntries(dir)
-    if (entries === undefined) return
-    for (const entry of entries) {
-      this.scanEntry(dir, entry, state)
-    }
-  }
-
-  private scanEntry(dir: string, entry: node_fs.Dirent, state: ScanState): void {
-    const fullPath = node_path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      this.scanDirectory(fullPath, state)
-      return
-    }
-    this.scanFile(fullPath, state)
   }
 
   private scanDirectory(directoryPath: string, state: ScanState): void {
     const baseName = node_path.basename(directoryPath)
     if (baseName === 'node_modules' || baseName === '.git') return
-    this.scanDir(directoryPath, state)
+
+    const entries = readDirectoryEntries(directoryPath)
+    if (entries === undefined) return
+
+    for (const entry of entries) {
+      const fullPath = node_path.join(directoryPath, entry.name)
+      if (entry.isDirectory()) {
+        this.scanDirectory(fullPath, state)
+        continue
+      }
+      this.scanFile(fullPath, state)
+    }
   }
 
   private scanFile(filePath: string, state: ScanState): void {
     if (!isSourceFile(filePath)) return
-    if (normalizePath(filePath) === normalizePath(this.options.entrypointFile)) return
+    if (normalizePath(filePath) === this.entrypointFile) return
     const symbols = this.getImportedSymbols(filePath, state.exportedSymbols)
     if (symbols.length === 0) return
     state.importers.push({ filePath, symbols })

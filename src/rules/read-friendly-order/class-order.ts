@@ -4,7 +4,7 @@ import type { Node } from 'estree'
 import { walkThisDeps } from './ast-utils.js'
 
 interface MemberEntry {
-  node: Node & Rule.NodeParentExtension
+  node: Node
   idx: number
   name: string | null
   thisDeps: Set<string>
@@ -13,10 +13,7 @@ interface MemberEntry {
   computed: boolean
 }
 
-export function checkClass(
-  ctx: Rule.RuleContext,
-  classBody: Node & Rule.NodeParentExtension,
-): void {
+export function checkClass(ctx: Rule.RuleContext, classBody: Node): void {
   const analyzer = new ClassOrderAnalyzer(ctx, classBody)
   analyzer.analyze()
 }
@@ -27,11 +24,9 @@ class ClassOrderAnalyzer {
 
   constructor(
     private readonly context: Rule.RuleContext,
-    private readonly classBody: Node & Rule.NodeParentExtension,
+    private readonly classBody: Node,
   ) {
-    const body = Reflect.get(classBody, 'body') as
-      | Array<Node & Rule.NodeParentExtension>
-      | undefined
+    const body = Reflect.get(classBody, 'body') as Array<Node> | undefined
     if (!body || body.length === 0) {
       this.members = []
       this.hasComputedMembers = false
@@ -129,13 +124,13 @@ function methodReachesSelf(
 function buildClassFix(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
+  classBody: Node,
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const src = ctx.sourceCode
     const sorted = sortMembers(members)
     const texts = sorted.map((m) => src.getText(m.node))
-    const body = Reflect.get(classBody, 'body') as Array<Node & Rule.NodeParentExtension>
+    const body = Reflect.get(classBody, 'body') as Node[]
     const first = body[0]
     const last = body[body.length - 1]
     return fixer.replaceTextRange([first.range![0], last.range![1]], texts.join('\n\n'))
@@ -194,7 +189,7 @@ function drainKahns(
   return result
 }
 
-function collectMembers(body: Array<Node & Rule.NodeParentExtension>): MemberEntry[] {
+function collectMembers(body: Node[]): MemberEntry[] {
   return body.map((node, idx) => {
     const kind = getMemberKind(node)
     const name = getMemberName(node)

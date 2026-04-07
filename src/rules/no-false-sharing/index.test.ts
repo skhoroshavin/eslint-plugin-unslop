@@ -117,6 +117,24 @@ scenario('type-only imports satisfy sharing threshold', rule, {
   code: 'export type ButtonProps = { label: string }',
 })
 
+scenario('module not marked shared is exempt from false-sharing enforcement', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
+  ],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'ui/components': {},
+      },
+    },
+  },
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
+})
+
 scenario('missing sourceRoot in settings fails gracefully without reporting', rule, {
   files: [
     TSCONFIG,
