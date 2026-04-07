@@ -188,6 +188,32 @@ scenario('export const stays in public API band above private class', rule, {
   // No violation since the order is correct
 })
 
+scenario(
+  'exported function below unrelated private helper is flagged and moved above private symbols',
+  rule,
+  {
+    code: [
+      'function parse() {',
+      '  return 1',
+      '}',
+      '',
+      'export function normalize() {',
+      '  return 2',
+      '}',
+    ].join('\n'),
+    errors: [{ messageId: 'publicApiAbovePrivate' }],
+    output: [
+      'export function normalize() {',
+      '  return 2',
+      '}',
+      '',
+      'function parse() {',
+      '  return 1',
+      '}',
+    ].join('\n'),
+  },
+)
+
 scenario('internal constant above exported function is flagged and moved below', rule, {
   code: [
     'const INTERNAL_LIMIT = 3',

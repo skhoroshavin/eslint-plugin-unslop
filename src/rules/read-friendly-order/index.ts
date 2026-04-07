@@ -31,6 +31,7 @@ export default {
     messages: {
       moveHelperBelow: 'Move helper "{{name}}" below its first consumer.',
       moveConstantBelow: 'Move constant "{{name}}" below its first consumer.',
+      publicApiAbovePrivate: 'Move public API declarations above private symbols.',
       constructorFirst: 'Constructor should be the first class member.',
       publicFieldOrder: 'Public fields should come right after the constructor.',
       moveMemberBelow: 'Move member "{{name}}" below its first consumer.',
@@ -130,27 +131,69 @@ class TopLevelOrderAnalyzer {
     }
   }
 
-  private findViolations(declarations: Entry[], eager: Set<string>, cyclic: Set<string>): Entry[] {
-    const violations: Entry[] = []
+  private findViolations(
+    declarations: Entry[],
+    eager: Set<string>,
+    cyclic: Set<string>,
+  ): Violation[] {
+    const violations = this.findDependencyViolations(declarations, eager, cyclic)
+    if (violations.length > 0 || cyclic.size > 0) return violations
+    const seen = new Set(violations.map((violation) => violation.entry.idx))
+    for (const violation of this.findBandViolations(declarations, eager, cyclic)) {
+      if (seen.has(violation.entry.idx)) continue
+      seen.add(violation.entry.idx)
+      violations.push(violation)
+    }
+    return violations
+  }
+
+  private findDependencyViolations(
+    declarations: Entry[],
+    eager: Set<string>,
+    cyclic: Set<string>,
+  ): Violation[] {
+    const violations: Violation[] = []
     for (const entry of declarations) {
       if (!entry.name || eager.has(entry.name) || cyclic.has(entry.name)) continue
       const consumer = firstConsumer(entry.name, declarations)
       if (!consumer) continue
       if (entry.idx < consumer.idx && getBand(entry) >= getBand(consumer)) {
-        violations.push(entry)
+        violations.push({ entry, messageId: getDependencyMessageId(entry.name) })
       }
     }
     return violations
   }
 
-  private reportAll(violations: Entry[], program: Program, entries: Entry[]): void {
+  private findBandViolations(
+    declarations: Entry[],
+    eager: Set<string>,
+    cyclic: Set<string>,
+  ): Violation[] {
+    const violations: Violation[] = []
+    let hasPrivateEntry = false
+    for (const entry of declarations) {
+      if (isPrivateEntry(entry)) {
+        hasPrivateEntry = true
+        continue
+      }
+      if (!entry.isLocalPublicExport || !hasPrivateEntry) continue
+      if (entry.name !== null && (eager.has(entry.name) || cyclic.has(entry.name))) continue
+      violations.push({ entry, messageId: 'publicApiAbovePrivate' })
+    }
+    return violations
+  }
+
+  private reportAll(violations: Violation[], program: Program, entries: Entry[]): void {
     const fix = this.buildTopFix(program, entries)
     for (let index = 0; index < violations.length; index++) {
       const violation = violations[index]
       this.context.report({
-        node: violation.node,
-        messageId: isConst(violation.name!) ? 'moveConstantBelow' : 'moveHelperBelow',
-        data: { name: violation.name! },
+        node: violation.entry.node,
+        messageId: violation.messageId,
+        data:
+          violation.messageId === 'publicApiAbovePrivate'
+            ? undefined
+            : { name: violation.entry.name! },
         fix: index === 0 ? fix : null,
       })
     }
@@ -278,6 +321,15 @@ function kindPriority(entry: Entry): number {
     default:
       return 3
   }
+}
+
+function getDependencyMessageId(name: string): 'moveHelperBelow' | 'moveConstantBelow' {
+  return isConst(name) ? 'moveConstantBelow' : 'moveHelperBelow'
+}
+
+interface Violation {
+  entry: Entry
+  messageId: 'moveHelperBelow' | 'moveConstantBelow' | 'publicApiAbovePrivate'
 }
 
 interface Entry {

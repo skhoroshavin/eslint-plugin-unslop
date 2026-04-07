@@ -94,6 +94,10 @@ export class ProjectContext {
   }
 }
 
+export function normalizePath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/')
+}
+
 interface ProjectContextOptions {
   sourceRoot?: string
   projectRoot?: string
@@ -257,7 +261,3 @@ const SOURCE_FILE_PATTERN = /\.[jt]sx?$/
 const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
 
 const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
-
-export function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/')
-}
