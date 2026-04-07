@@ -215,11 +215,6 @@ class TopLevelOrderAnalyzer {
   }
 }
 
-interface NamedEntries {
-  byName: Map<string, Entry>
-  names: Set<string>
-}
-
 function buildCanonicalOrder(entries: Entry[]): Entry[] {
   return [
     ...entries.filter(isImportEntry),
@@ -244,12 +239,25 @@ function collectNamedEntries(entries: Entry[]): NamedEntries {
   return { byName, names: new Set(byName.keys()) }
 }
 
+interface NamedEntries {
+  byName: Map<string, Entry>
+  names: Set<string>
+}
+
 function getBand(entry: Entry): number {
   if (entry.isImport) return BAND_IMPORT
   if (entry.isExternalReexport) return BAND_EXTERNAL_REEXPORT
   if (isLocalPublicApiEntry(entry)) return BAND_LOCAL_PUBLIC_API
   return BAND_PRIVATE
 }
+
+const BAND_IMPORT = 1
+
+const BAND_EXTERNAL_REEXPORT = 2
+
+const BAND_LOCAL_PUBLIC_API = 3
+
+const BAND_PRIVATE = 4
 
 function isDeclarationEntry(entry: Entry): boolean {
   return !entry.isImport && !entry.isExternalReexport
@@ -263,18 +271,13 @@ function isExternalReexportEntry(entry: Entry): boolean {
   return entry.isExternalReexport
 }
 
-function isLocalPublicApiEntry(entry: Entry): boolean {
-  return entry.isLocalExportList || entry.isLocalExportDefault || entry.isLocalPublicExport
-}
-
 function isPrivateEntry(entry: Entry): boolean {
   return !entry.isImport && !entry.isExternalReexport && !isLocalPublicApiEntry(entry)
 }
 
-const BAND_IMPORT = 1
-const BAND_EXTERNAL_REEXPORT = 2
-const BAND_LOCAL_PUBLIC_API = 3
-const BAND_PRIVATE = 4
+function isLocalPublicApiEntry(entry: Entry): boolean {
+  return entry.isLocalExportList || entry.isLocalExportDefault || entry.isLocalPublicExport
+}
 
 function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
   let best: Entry | undefined
@@ -316,21 +319,6 @@ function drainKahns(
   const result: Entry[] = []
   const placed = new Set<string>()
 
-  // Priority: constants (0) < types (1) < functions (2) < other (3)
-  const kindPriority = (e: Entry): number => {
-    const kind = getDeclKind(e.node)
-    switch (kind) {
-      case 'constant':
-        return 0
-      case 'type':
-        return 1
-      case 'function':
-        return 2
-      default:
-        return 3
-    }
-  }
-
   while (queue.length > 0) {
     // Sort by: 1) kind priority (constants first), 2) original index
     queue.sort((a, b) => {
@@ -354,6 +342,20 @@ function drainKahns(
     if (e.name && !placed.has(e.name)) result.push(e)
   }
   return result
+}
+
+function kindPriority(entry: Entry): number {
+  const kind = getDeclKind(entry.node)
+  switch (kind) {
+    case 'constant':
+      return 0
+    case 'type':
+      return 1
+    case 'function':
+      return 2
+    default:
+      return 3
+  }
 }
 
 interface Entry {

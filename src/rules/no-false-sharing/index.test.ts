@@ -157,3 +157,28 @@ scenario('missing architecture settings fails gracefully without reporting', rul
   filename: 'src/ui/components/index.ts',
   code: 'export const Button = 1',
 })
+
+scenario('intra-module import from source file counts as consumer', rule, {
+  files: [
+    TSCONFIG,
+    {
+      path: 'src/ui/components/index.ts',
+      content: "export { Helper } from './helper.js'",
+    },
+    {
+      path: 'src/ui/components/helper.ts',
+      content: 'export const Helper = 1',
+    },
+    {
+      path: 'src/ui/components/internal.ts',
+      content: "import { Helper } from './helper.js'\nvoid Helper",
+    },
+    {
+      path: 'src/feature-a/screen.ts',
+      content: "import { Helper } from '@/ui/components'",
+    },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: "export { Helper } from './helper.js'",
+})

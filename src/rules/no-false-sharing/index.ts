@@ -6,10 +6,11 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 
 import {
   ArchitecturePolicyResolver,
-  ProjectContext,
   getDeclarationNamesFromExport,
   normalizePath,
 } from '../../utils/index.js'
+
+import type { ProjectContext } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -42,14 +43,10 @@ export default {
     if (projectRoot === undefined) return {}
 
     const sourceDir = node_path.join(projectRoot, sourceRoot)
-    const projectContext = ProjectContext.forFile(filename, {
-      sourceRoot,
-      projectRoot,
-    })
     const analyzer = new NoFalseSharingAnalyzer(context, {
       entrypointFile: filename,
       sourceDir,
-      projectContext,
+      projectContext: resolver.context,
     })
 
     return {
@@ -143,7 +140,7 @@ function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<st
     if (specifier.exported.type !== 'Identifier') continue
     symbols.add(specifier.exported.name)
   }
-  if (node.declaration === null || node.declaration === undefined) return
+  if (node.declaration == null) return
   for (const name of getDeclarationNamesFromExport(node.declaration)) {
     symbols.add(name)
   }
@@ -169,6 +166,7 @@ class SymbolUsageScanner {
   }
 
   private readonly entrypointFile: string
+  private reExportSources: Set<string> | undefined
 
   scanSourceTree(sourceDir: string, exportedSymbols: Set<string>): SymbolImporter[] {
     const importers: SymbolImporter[] = []
@@ -213,18 +211,38 @@ class SymbolUsageScanner {
       options.filePath,
       options.specifier,
     )
-    if (!isSamePath(resolvedTarget, this.entrypointFile)) return
+    if (!this.isEntrypointOrReExportSource(resolvedTarget)) return
     for (const name of options.symbolNames) {
       if (name.length === 0) continue
       if (!options.exportedSymbols.has(name)) continue
       options.result.add(name)
     }
   }
-}
 
-function isSamePath(value: string | undefined, expected: string): boolean {
-  if (value === undefined) return false
-  return normalizePath(value) === normalizePath(expected)
+  private isEntrypointOrReExportSource(resolvedTarget: string | undefined): boolean {
+    if (resolvedTarget === undefined) return false
+    const normalized = normalizePath(resolvedTarget)
+    if (normalized === this.entrypointFile) return true
+    return this.getReExportSources().has(normalized)
+  }
+
+  private getReExportSources(): Set<string> {
+    if (this.reExportSources !== undefined) return this.reExportSources
+    this.reExportSources = new Set<string>()
+    const sourceFile = this.options.projectContext.getSourceFile(this.options.entrypointFile)
+    if (sourceFile === undefined) return this.reExportSources
+    for (const declaration of sourceFile.getExportDeclarations()) {
+      const specifier = declaration.getModuleSpecifierValue()
+      if (specifier === undefined || specifier.length === 0) continue
+      const resolved = this.options.projectContext.resolveLocalSpecifier(
+        this.options.entrypointFile,
+        specifier,
+      )
+      if (resolved === undefined) continue
+      this.reExportSources.add(normalizePath(resolved))
+    }
+    return this.reExportSources
+  }
 }
 
 interface MatchingSymbolOptions {

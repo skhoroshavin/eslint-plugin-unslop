@@ -80,11 +80,11 @@ export class ProjectContext {
 
   private getOrAddSourceFile(filePath: string): SourceFile | undefined {
     const sourceFilePath = normalizePath(filePath)
-    const existing =
+    return (
       this.project.getSourceFile(sourceFilePath) ??
       this.project.getSourceFile(filePath) ??
       this.project.addSourceFileAtPathIfExists(filePath)
-    return existing
+    )
   }
 
   private ensureInsideSourceRoot(filePath: string): string | undefined {

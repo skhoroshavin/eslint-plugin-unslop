@@ -32,8 +32,8 @@ export class ArchitecturePolicyResolver {
     return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
   }
 
-  resolveImportTarget(importerFile: string, specifier: string): string | undefined {
-    return this.projectContext.resolveLocalSpecifier(importerFile, specifier)
+  get context(): ProjectContext {
+    return this.projectContext
   }
 
   deriveProjectRoot(filePath: string): string | undefined {
@@ -230,8 +230,7 @@ function pickBestMatch(
   matches: MatchedArchitectureModule[],
 ): MatchedArchitectureModule | undefined {
   if (matches.length === 0) return undefined
-  const sorted = [...matches].sort(compareMatches)
-  return sorted[0]
+  return matches.reduce((best, current) => (compareMatches(current, best) < 0 ? current : best))
 }
 
 function compareMatches(left: MatchedArchitectureModule, right: MatchedArchitectureModule): number {

@@ -1,10 +1,10 @@
+import node_path from 'node:path'
+
 import type { Rule } from 'eslint'
 
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
 
-import node_path from 'node:path'
-
-import { ArchitecturePolicyResolver, ProjectContext, normalizePath } from '../../utils/index.js'
+import { ArchitecturePolicyResolver, normalizePath } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -29,21 +29,15 @@ export default {
     const resolver = ArchitecturePolicyResolver.fromContext(context)
     if (resolver === undefined) return {}
 
-    const projectContext = ProjectContext.forFile(filename, {
-      sourceRoot: resolver.sourceRoot,
-      projectRoot: resolver.deriveProjectRoot(filename),
-    })
-    const resolutionContext = { resolver, projectContext }
-
     return {
       ImportDeclaration(node) {
-        checkDeclaration(context, node, filename, resolutionContext)
+        checkDeclaration(context, node, filename, resolver)
       },
       ExportNamedDeclaration(node) {
-        checkDeclaration(context, node, filename, resolutionContext)
+        checkDeclaration(context, node, filename, resolver)
       },
       ExportAllDeclaration(node) {
-        checkDeclaration(context, node, filename, resolutionContext)
+        checkDeclaration(context, node, filename, resolver)
       },
     }
   },
@@ -53,19 +47,19 @@ function checkDeclaration(
   context: Rule.RuleContext,
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   filename: string,
-  resolutionContext: ResolutionContext,
+  resolver: ArchitecturePolicyResolver,
 ): void {
   const specifier = getSpecifier(node)
   if (specifier === undefined) return
 
-  const importer = resolutionContext.resolver.matchFile(filename)
+  const importer = resolver.matchFile(filename)
   if (importer === undefined) return
 
-  const resolvedTarget = resolutionContext.projectContext.resolveLocalSpecifier(filename, specifier)
+  const resolvedTarget = resolver.context.resolveLocalSpecifier(filename, specifier)
   if (resolvedTarget === undefined) return
   const targetFile = normalizePath(resolvedTarget)
 
-  const importee = resolutionContext.resolver.matchFile(targetFile)
+  const importee = resolver.matchFile(targetFile)
   if (importee === undefined) return
 
   checkModuleEdge({
@@ -76,20 +70,15 @@ function checkDeclaration(
     importer,
     importee,
     targetFile,
-    resolver: resolutionContext.resolver,
+    resolver,
   })
-}
-
-interface ResolutionContext {
-  resolver: ArchitecturePolicyResolver
-  projectContext: ProjectContext
 }
 
 function getSpecifier(
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
 ): string | undefined {
   const source = node.source
-  if (source === undefined || source === null) return undefined
+  if (source == null) return undefined
   return typeof source.value === 'string' ? source.value : undefined
 }
 
