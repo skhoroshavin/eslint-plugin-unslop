@@ -259,5 +259,5 @@ const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
 const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
 export function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
+  return pathValue.replace(/\\/g, '/')
 }

@@ -2,7 +2,11 @@ import type { Rule } from 'eslint'
 
 import type { ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
-import { ArchitecturePolicyResolver, getDeclarationNamesFromExport } from '../../utils/index.js'
+import {
+  ArchitecturePolicyResolver,
+  getDeclarationNamesFromExport,
+  isPublicEntrypoint,
+} from '../../utils/index.js'
 
 export default {
   meta: {
@@ -53,7 +57,7 @@ export default {
 function buildRuleState(context: Rule.RuleContext, filename: string): RuleState | undefined {
   const resolver = ArchitecturePolicyResolver.fromContext(context)
   if (resolver === undefined) return undefined
-  if (!resolver.isPublicEntrypoint(filename)) return undefined
+  if (!isPublicEntrypoint(filename)) return undefined
 
   const moduleMatch = resolver.matchFile(filename)
   if (moduleMatch === undefined) return undefined

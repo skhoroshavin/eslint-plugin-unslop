@@ -4,7 +4,7 @@ import type { Rule } from 'eslint'
 
 import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } from 'estree'
 
-import { ArchitecturePolicyResolver, normalizePath } from '../../utils/index.js'
+import { ArchitecturePolicyResolver, isPublicEntrypoint, normalizePath } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -70,7 +70,6 @@ function checkDeclaration(
     importer,
     importee,
     targetFile,
-    resolver,
   })
 }
 
@@ -99,14 +98,14 @@ function checkSameModuleEdge(options: EdgeCheckOptions): void {
 }
 
 function checkCrossModuleEdge(options: EdgeCheckOptions): void {
-  const { context, node, specifier, importer, importee, targetFile, resolver } = options
+  const { context, node, specifier, importer, importee, targetFile } = options
 
   if (isLocalNamespaceImport(node)) {
     context.report({ node, messageId: 'namespaceLocalForbidden' })
     return
   }
 
-  if (isShallowRelativeEntrypoint(specifier, targetFile, resolver)) return
+  if (isShallowRelativeEntrypoint(specifier, targetFile)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
     context.report({
@@ -117,7 +116,7 @@ function checkCrossModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (resolver.isPublicEntrypoint(targetFile)) return
+  if (isPublicEntrypoint(targetFile)) return
   context.report({ node, messageId: 'nonEntrypoint' })
 }
 
@@ -128,15 +127,9 @@ function isLocalNamespaceImport(
   return node.specifiers.some((specifier) => specifier.type === 'ImportNamespaceSpecifier')
 }
 
-function isShallowRelativeEntrypoint(
-  specifier: string,
-  targetFile: string,
-  resolver: ArchitecturePolicyResolver,
-): boolean {
+function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {
   return (
-    !isRelativeTooDeep(specifier) &&
-    specifier.startsWith('./') &&
-    resolver.isPublicEntrypoint(targetFile)
+    !isRelativeTooDeep(specifier) && specifier.startsWith('./') && isPublicEntrypoint(targetFile)
   )
 }
 
@@ -148,7 +141,6 @@ interface EdgeCheckOptions {
   importer: NonNullable<ReturnType<ArchitecturePolicyResolver['matchFile']>>
   importee: NonNullable<ReturnType<ArchitecturePolicyResolver['matchFile']>>
   targetFile: string
-  resolver: ArchitecturePolicyResolver
 }
 
 function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {

@@ -41,10 +41,6 @@ export class ArchitecturePolicyResolver {
     return deriveProjectRoot(filePath, this.policy.sourceRoot)
   }
 
-  isPublicEntrypoint(filePath: string): boolean {
-    return isPublicEntrypoint(filePath)
-  }
-
   get sourceRoot(): string | undefined {
     return this.policy.sourceRoot
   }
@@ -256,7 +252,7 @@ function countWildcards(value: string): number {
   return value.split('*').length - 1
 }
 
-function isPublicEntrypoint(filePath: string): boolean {
+export function isPublicEntrypoint(filePath: string): boolean {
   return ENTRYPOINT_FILES.has(node_path.basename(filePath))
 }
 

@@ -1,6 +1,6 @@
-/* eslint-disable complexity, unslop/read-friendly-order */
+/* eslint-disable unslop/read-friendly-order */
 import type { Rule } from 'eslint'
-import type { Node, Program } from 'estree'
+import type { ExpressionStatement, Node, Program } from 'estree'
 
 type Phase = 'setup' | 'teardown' | 'test'
 
@@ -52,14 +52,15 @@ function collectTestCalls(p: Program): PhaseCall[] {
 
 function getPhase(stmt: Node): Phase | null {
   if (stmt.type !== 'ExpressionStatement') return null
-  const expr = Reflect.get(stmt, 'expression')
-  if (!expr || typeof expr !== 'object') return null
-  if (Reflect.get(expr, 'type') !== 'CallExpression') return null
-  const callee = Reflect.get(expr, 'callee')
-  if (!callee || typeof callee !== 'object') return null
-  if (Reflect.get(callee, 'type') !== 'Identifier') return null
-  const name = Reflect.get(callee, 'name')
-  return typeof name === 'string' ? classifyCallee(name) : null
+  return getPhaseFromExpression(stmt)
+}
+
+function getPhaseFromExpression(stmt: ExpressionStatement): Phase | null {
+  const { expression } = stmt
+  if (expression.type !== 'CallExpression') return null
+  const { callee } = expression
+  if (callee.type !== 'Identifier') return null
+  return classifyCallee(callee.name)
 }
 
 function classifyCallee(name: string): Phase | null {

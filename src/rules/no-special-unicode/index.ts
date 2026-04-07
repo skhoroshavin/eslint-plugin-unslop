@@ -19,7 +19,6 @@ export default {
   create(context) {
     return {
       Literal(node) {
-        if (node.type !== 'Literal') return
         if (typeof node.value !== 'string') return
         const raw = context.sourceCode.getText(node)
         const wrapper = getWrapper(raw)

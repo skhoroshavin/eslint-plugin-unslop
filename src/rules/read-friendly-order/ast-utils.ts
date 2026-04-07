@@ -1,5 +1,10 @@
 /* eslint-disable no-restricted-syntax, complexity, unslop/read-friendly-order */
-import type { Node } from 'estree'
+import type {
+  ExportDefaultDeclaration,
+  ExportNamedDeclaration,
+  Node,
+  VariableDeclaration,
+} from 'estree'
 
 function prop(obj: unknown, key: string): unknown {
   if (typeof obj !== 'object' || obj === null) return undefined
@@ -15,9 +20,9 @@ export function getDeclName(node: Node): string | null {
   switch (node.type) {
     case 'FunctionDeclaration':
     case 'ClassDeclaration':
-      return idName(node) ?? null
+      return node.id?.name ?? null
     case 'VariableDeclaration':
-      return varDeclName(node) ?? null
+      return varDeclName(node)
     case 'ExportNamedDeclaration':
       return exportDeclName(node)
     case 'ExportDefaultDeclaration':
@@ -27,17 +32,15 @@ export function getDeclName(node: Node): string | null {
   }
 }
 
-function varDeclName(node: Node): string | null {
-  const decls = prop(node, 'declarations')
-  if (!Array.isArray(decls) || decls.length === 0) return null
-  return idName(decls[0]) ?? null
+function varDeclName(node: VariableDeclaration): string | null {
+  if (node.declarations.length === 0) return null
+  const { id } = node.declarations[0]
+  return id.type === 'Identifier' ? id.name : null
 }
 
-function exportDeclName(node: Node): string | null {
-  const decl = prop(node, 'declaration')
-  if (!decl || typeof decl !== 'object') return null
-  if (!strProp(decl, 'type')) return null
-  return getDeclName(decl as Node)
+function exportDeclName(node: ExportNamedDeclaration): string | null {
+  if (node.declaration == null) return null
+  return getDeclName(node.declaration)
 }
 
 function idName(obj: unknown): string | undefined {
@@ -140,92 +143,89 @@ function walkNodeChildren(node: unknown, visit: (child: unknown) => void): void 
 }
 
 export function getDeclKind(node: Node): 'constant' | 'type' | 'function' | 'other' {
-  const type = strProp(node, 'type')
-  if (!type) return 'other'
-  if (type === 'TSInterfaceDeclaration' || type === 'TSTypeAliasDeclaration') {
-    return 'type'
+  if (isTsTypeDeclaration(node)) return 'type'
+  if (node.type === 'ExportNamedDeclaration') {
+    return getExportedDeclKind(node)
   }
-  if (type === 'ExportNamedDeclaration') {
-    const decl = prop(node, 'declaration')
-    if (decl && typeof decl === 'object') {
-      const declType = strProp(decl, 'type')
-      if (declType === 'TSInterfaceDeclaration' || declType === 'TSTypeAliasDeclaration') {
-        return 'type'
-      }
-      if (declType === 'VariableDeclaration' || declType === 'FunctionDeclaration') {
-        return getDeclKind(decl as Node)
-      }
-    }
-    return 'other'
-  }
-  if (type === 'FunctionDeclaration') {
-    return 'function'
-  }
-  if (type === 'VariableDeclaration') {
-    const decls = prop(node, 'declarations')
-    if (!Array.isArray(decls) || decls.length === 0) return 'other'
-    const name = idName(decls[0])
-    if (name && /^[A-Z][A-Z_0-9]*$/.test(name)) {
-      return 'constant'
-    }
-    const initType = strProp(prop(decls[0], 'init'), 'type')
-    if (initType === 'FunctionExpression' || initType === 'ArrowFunctionExpression') {
-      return 'function'
-    }
-    return 'other'
+  if (node.type === 'FunctionDeclaration') return 'function'
+  if (node.type === 'VariableDeclaration') return getVarDeclKind(node)
+  return 'other'
+}
+
+function getExportedDeclKind(
+  node: ExportNamedDeclaration,
+): 'constant' | 'type' | 'function' | 'other' {
+  if (node.declaration == null) return 'other'
+  if (isTsTypeDeclaration(node.declaration)) return 'type'
+  if (
+    node.declaration.type === 'VariableDeclaration' ||
+    node.declaration.type === 'FunctionDeclaration'
+  ) {
+    return getDeclKind(node.declaration)
   }
   return 'other'
 }
 
-export function isLocalPublicExport(node: Node): boolean {
-  if (!isNamedExport(node)) return false
-  return hasDeclaration(node)
+function getVarDeclKind(node: VariableDeclaration): 'constant' | 'function' | 'other' {
+  if (node.declarations.length === 0) return 'other'
+  const first = node.declarations[0]
+  if (first.id.type === 'Identifier' && /^[A-Z][A-Z_0-9]*$/.test(first.id.name)) {
+    return 'constant'
+  }
+  const initType = first.init?.type
+  if (initType === 'FunctionExpression' || initType === 'ArrowFunctionExpression') {
+    return 'function'
+  }
+  return 'other'
 }
 
-export function isEagerInit(node: Node): boolean {
-  const t = node.type
-  if (t === 'ExpressionStatement' || t === 'IfStatement') return true
-  if (t === 'ExportDefaultDeclaration') {
-    const declType = strProp(prop(node, 'declaration'), 'type')
-    return declType === 'CallExpression' || declType === 'NewExpression'
-  }
-  const inner = t === 'ExportNamedDeclaration' ? prop(node, 'declaration') : node
-  if (strProp(inner, 'type') !== 'VariableDeclaration') return false
-  const decls = prop(inner, 'declarations')
-  if (!Array.isArray(decls) || decls.length === 0) return false
-  const initType = strProp(prop(decls[0], 'init'), 'type')
-  if (!initType) return false
-  return initType !== 'FunctionExpression' && initType !== 'ArrowFunctionExpression'
+function isTsTypeDeclaration(node: Node): boolean {
+  return (
+    node.type === ('TSInterfaceDeclaration' as string) ||
+    node.type === ('TSTypeAliasDeclaration' as string)
+  )
 }
 
 export function isReexportNode(node: Node): boolean {
-  if (isNamedExport(node)) return hasSource(node)
+  if (node.type === 'ExportNamedDeclaration') return node.source != null
   return node.type === 'ExportAllDeclaration'
 }
 
 export function isLocalExportList(node: Node): boolean {
-  if (!isNamedExport(node)) return false
-  if (hasSource(node)) return false
-  if (hasDeclaration(node)) return false
-  const specs = prop(node, 'specifiers')
-  return Array.isArray(specs) && specs.length > 0
+  if (node.type !== 'ExportNamedDeclaration') return false
+  return node.source == null && node.declaration == null && node.specifiers.length > 0
 }
 
 export function isLocalExportDefault(node: Node): boolean {
+  if (node.type !== 'ExportDefaultDeclaration') return false
+  return node.declaration.type !== 'Identifier'
+}
+
+export function isLocalPublicExport(node: Node): boolean {
+  if (node.type !== 'ExportNamedDeclaration') return false
+  return node.declaration != null
+}
+
+export function isEagerInit(node: Node): boolean {
+  if (node.type === 'ExpressionStatement' || node.type === 'IfStatement') return true
   if (node.type === 'ExportDefaultDeclaration') {
-    return strProp(prop(node, 'declaration'), 'type') !== 'Identifier'
+    return isEagerDefaultExport(node)
   }
-  return false
+  if (node.type === 'ExportNamedDeclaration') {
+    return node.declaration != null ? isEagerVarDecl(node.declaration) : false
+  }
+  return isEagerVarDecl(node)
 }
 
-function isNamedExport(node: Node): boolean {
-  return node.type === 'ExportNamedDeclaration'
+function isEagerDefaultExport(node: ExportDefaultDeclaration): boolean {
+  const { type } = node.declaration
+  return type === 'CallExpression' || type === 'NewExpression'
 }
 
-function hasSource(node: Node): boolean {
-  return !!prop(node, 'source')
-}
-
-function hasDeclaration(node: Node): boolean {
-  return !!prop(node, 'declaration')
+function isEagerVarDecl(node: Node): boolean {
+  if (node.type !== 'VariableDeclaration') return false
+  if (node.declarations.length === 0) return false
+  const initType = node.declarations[0].init?.type
+  if (!initType) return false
+  return initType !== 'FunctionExpression' && initType !== 'ArrowFunctionExpression'
 }

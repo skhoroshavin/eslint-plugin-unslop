@@ -1,4 +1,3 @@
-/* eslint-disable complexity, max-params */
 import type { Rule } from 'eslint'
 
 import type { Node, Program } from 'estree'
@@ -15,6 +14,8 @@ import {
 } from './ast-utils.js'
 
 import { checkClass } from './class-order.js'
+
+import { findCyclicNodes, kahnSort } from './graph-utils.js'
 
 import { checkTestPhases } from './test-phase.js'
 
@@ -57,10 +58,13 @@ class TopLevelOrderAnalyzer {
   analyzeProgram(program: Program): void {
     const entries = this.collectEntries(program)
     const declarations = entries.filter(isDeclarationEntry)
-    const namedDeclarations = collectNamedEntries(declarations)
-    this.filterDepsToLocal(declarations, namedDeclarations.names)
-    const eager = this.buildEagerSet(declarations, namedDeclarations.names)
-    const cyclic = this.findCyclic(namedDeclarations)
+    const byName = collectNamedEntryMap(declarations)
+    const localNames: Set<string> = new Set(byName.keys())
+    this.filterDepsToLocal(declarations, localNames)
+    const eager = this.buildEagerSet(declarations, localNames)
+    const cyclic = findCyclicNodes(
+      declarations.filter((entry): entry is Entry & { name: string } => entry.name !== null),
+    )
     const violations = this.findViolations(declarations, eager, cyclic)
     if (violations.length === 0) return
     this.reportAll(violations, program, entries)
@@ -126,37 +130,6 @@ class TopLevelOrderAnalyzer {
     }
   }
 
-  private findCyclic(namedEntries: NamedEntries): Set<string> {
-    const cyclic = new Set<string>()
-    for (const [name] of namedEntries.byName) {
-      if (this.reachesSelf(name, name, namedEntries.byName, namedEntries.names, new Set())) {
-        cyclic.add(name)
-      }
-    }
-    return cyclic
-  }
-
-  private reachesSelf(
-    target: string,
-    current: string,
-    byName: Map<string, Entry>,
-    localNames: Set<string>,
-    visited: Set<string>,
-  ): boolean {
-    const entry = byName.get(current)
-    if (!entry) return false
-    for (const dependency of entry.deps) {
-      if (!localNames.has(dependency)) continue
-      if (dependency === target) return true
-      if (visited.has(dependency)) continue
-      visited.add(dependency)
-      if (this.reachesSelf(target, dependency, byName, localNames, visited)) {
-        return true
-      }
-    }
-    return false
-  }
-
   private findViolations(declarations: Entry[], eager: Set<string>, cyclic: Set<string>): Entry[] {
     const violations: Entry[] = []
     for (const entry of declarations) {
@@ -216,11 +189,16 @@ class TopLevelOrderAnalyzer {
 }
 
 function buildCanonicalOrder(entries: Entry[]): Entry[] {
+  const compare = (a: Entry, b: Entry): number => {
+    const priorityDiff = kindPriority(a) - kindPriority(b)
+    if (priorityDiff !== 0) return priorityDiff
+    return a.idx - b.idx
+  }
   return [
     ...entries.filter(isImportEntry),
     ...entries.filter(isExternalReexportEntry),
-    ...prioritizeDefaultExport(kahnsSort(entries.filter(isLocalPublicApiEntry))),
-    ...kahnsSort(entries.filter(isPrivateEntry)),
+    ...prioritizeDefaultExport(kahnSort(entries.filter(isLocalPublicApiEntry), compare)),
+    ...kahnSort(entries.filter(isPrivateEntry), compare),
   ]
 }
 
@@ -230,18 +208,13 @@ function prioritizeDefaultExport(entries: Entry[]): Entry[] {
   return [exportDefaultEntry, ...entries.filter((entry) => entry !== exportDefaultEntry)]
 }
 
-function collectNamedEntries(entries: Entry[]): NamedEntries {
+function collectNamedEntryMap(entries: Entry[]): Map<string, Entry> {
   const byName = new Map<string, Entry>()
   for (const entry of entries) {
     if (entry.name === null) continue
     byName.set(entry.name, entry)
   }
-  return { byName, names: new Set(byName.keys()) }
-}
-
-interface NamedEntries {
-  byName: Map<string, Entry>
-  names: Set<string>
+  return byName
 }
 
 function getBand(entry: Entry): number {
@@ -291,57 +264,6 @@ function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
 
 function isConst(name: string): boolean {
   return /^[A-Z][A-Z_0-9]+$/.test(name)
-}
-
-function kahnsSort(decls: Entry[]): Entry[] {
-  const byName = new Map(decls.filter((e) => e.name).map((e) => [e.name!, e]))
-  const inDeg = buildInDegrees(decls, byName)
-  return drainKahns(decls, inDeg, byName)
-}
-
-function buildInDegrees(decls: Entry[], byName: Map<string, Entry>): Map<string, number> {
-  const inDeg = new Map<string, number>()
-  for (const [name] of byName) inDeg.set(name, 0)
-  for (const e of decls) {
-    for (const d of e.deps) {
-      if (inDeg.has(d)) inDeg.set(d, inDeg.get(d)! + 1)
-    }
-  }
-  return inDeg
-}
-
-function drainKahns(
-  decls: Entry[],
-  inDeg: Map<string, number>,
-  byName: Map<string, Entry>,
-): Entry[] {
-  const queue = decls.filter((e) => !e.name || inDeg.get(e.name) === 0)
-  const result: Entry[] = []
-  const placed = new Set<string>()
-
-  while (queue.length > 0) {
-    // Sort by: 1) kind priority (constants first), 2) original index
-    queue.sort((a, b) => {
-      const priorityDiff = kindPriority(a) - kindPriority(b)
-      if (priorityDiff !== 0) return priorityDiff
-      return a.idx - b.idx
-    })
-    const e = queue.shift()!
-    result.push(e)
-    if (e.name) placed.add(e.name)
-    for (const d of e.deps) {
-      if (placed.has(d) || !inDeg.has(d)) continue
-      inDeg.set(d, inDeg.get(d)! - 1)
-      if (inDeg.get(d) === 0) {
-        const de = byName.get(d)
-        if (de && !placed.has(d)) queue.push(de)
-      }
-    }
-  }
-  for (const e of decls) {
-    if (e.name && !placed.has(e.name)) result.push(e)
-  }
-  return result
 }
 
 function kindPriority(entry: Entry): number {
