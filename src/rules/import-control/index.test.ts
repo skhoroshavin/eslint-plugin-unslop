@@ -3,6 +3,17 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 
 // spec: architecture-import-export-control/spec.md
 
+const TSCONFIG_WITH_ALIASES = {
+  path: 'tsconfig.json',
+  content:
+    '{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}},"include":["src/**/*.ts"]}',
+}
+
+const TSCONFIG_NO_ALIASES = {
+  path: 'tsconfig.json',
+  content: '{"compilerOptions":{"baseUrl":"."},"include":["src/**/*.ts"]}',
+}
+
 scenario('cross-module import declared in the allowlist is allowed', rule, {
   files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
   settings: {
@@ -19,6 +30,44 @@ scenario('cross-module import declared in the allowlist is allowed', rule, {
 })
 
 scenario('cross-module alias import to entrypoint declared in the allowlist is allowed', rule, {
+  files: [
+    TSCONFIG_WITH_ALIASES,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import { UserModel } from '@/models/user/index.ts'",
+})
+
+scenario('alias import is ignored when tsconfig does not define that alias', rule, {
+  files: [
+    TSCONFIG_NO_ALIASES,
+    { path: 'src/models/user/index.ts' },
+    { path: 'src/repository/user/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      sourceRoot: 'src',
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/models/user/index.ts',
+  code: "import { createUserRepo } from '@/repository/user/index.ts'",
+})
+
+scenario('alias import fallback still works without project configuration', rule, {
   files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
   settings: {
     unslop: {
@@ -169,6 +218,7 @@ scenario('same-module relative import two levels deep is reported', rule, {
 
 scenario('same-module alias import two levels deep is reported', rule, {
   files: [
+    TSCONFIG_WITH_ALIASES,
     { path: 'src/repository/user/index.ts' },
     { path: 'src/repository/user/helpers/internal/index.ts' },
   ],

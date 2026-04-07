@@ -7,5 +7,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'node18',
-  external: ['eslint', 'typescript'],
+  external: ['eslint', 'typescript', 'ts-morph'],
 })

@@ -1,16 +1,27 @@
-import node_fs from 'node:fs'
-
 import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
+import { ProjectContext, normalizePath } from './project-context.js'
+
 export class ArchitecturePolicyResolver {
-  constructor(private readonly policy: ArchitecturePolicy) {}
+  constructor(
+    private readonly policy: ArchitecturePolicy,
+    private readonly projectContext: ProjectContext,
+  ) {}
 
   static fromContext(context: Rule.RuleContext): ArchitecturePolicyResolver | undefined {
     const policy = readArchitecturePolicy(context)
     if (policy === undefined) return undefined
-    return new ArchitecturePolicyResolver(policy)
+    const filename = context.filename
+    if (typeof filename !== 'string' || filename.length === 0) return undefined
+    const projectRoot =
+      policy.sourceRoot === undefined ? undefined : deriveProjectRoot(filename, policy.sourceRoot)
+    const projectContext = ProjectContext.forFile(filename, {
+      sourceRoot: policy.sourceRoot,
+      projectRoot,
+    })
+    return new ArchitecturePolicyResolver(policy, projectContext)
   }
 
   matchFile(filePath: string): MatchedArchitectureModule | undefined {
@@ -22,7 +33,7 @@ export class ArchitecturePolicyResolver {
   }
 
   resolveImportTarget(importerFile: string, specifier: string): string | undefined {
-    return resolveImportTarget(importerFile, this.policy.sourceRoot, specifier)
+    return this.projectContext.resolveLocalSpecifier(importerFile, specifier)
   }
 
   deriveProjectRoot(filePath: string): string | undefined {
@@ -245,94 +256,6 @@ interface MatchedArchitectureModule {
 function countWildcards(value: string): number {
   return value.split('*').length - 1
 }
-
-function resolveImportTarget(
-  importerFile: string,
-  sourceRoot: string | undefined,
-  specifier: string,
-): string | undefined {
-  if (!isLocalSpecifier(specifier)) return undefined
-  if (specifier.startsWith('@/')) {
-    return resolveAliasImport(importerFile, sourceRoot, specifier)
-  }
-  const importerDir = node_path.dirname(importerFile)
-  const base = node_path.resolve(importerDir, specifier)
-  return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
-}
-
-function isLocalSpecifier(specifier: string): boolean {
-  return specifier.startsWith('.') || specifier.startsWith('@/')
-}
-
-function resolveAliasImport(
-  importerFile: string,
-  sourceRoot: string | undefined,
-  specifier: string,
-): string | undefined {
-  if (sourceRoot === undefined) return undefined
-  const projectRoot = deriveProjectRoot(importerFile, sourceRoot)
-  if (projectRoot === undefined) return undefined
-  const remainder = specifier.slice(2)
-  const base = node_path.join(projectRoot, sourceRoot, remainder)
-  return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
-}
-
-function resolveInsideSourceRoot(
-  filePath: string | undefined,
-  sourceRoot: string | undefined,
-): string | undefined {
-  if (filePath === undefined) return undefined
-  if (sourceRoot === undefined) return filePath
-  const normalized = normalizePath(filePath)
-  return findSourceRootMarkerIndex(normalized, sourceRoot) === -1 ? undefined : filePath
-}
-
-export function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
-}
-
-function resolveExistingFile(basePath: string): string | undefined {
-  const candidates = buildCandidates(basePath)
-  for (const candidate of candidates) {
-    const resolved = resolveCandidate(candidate)
-    if (resolved !== undefined) return resolved
-  }
-  return undefined
-}
-
-function resolveCandidate(candidate: string): string | undefined {
-  if (!node_fs.existsSync(candidate)) return undefined
-  const stat = node_fs.statSync(candidate)
-  if (stat.isFile()) return candidate
-  if (!stat.isDirectory()) return undefined
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    const indexPath = node_path.join(candidate, `index${extension}`)
-    if (!node_fs.existsSync(indexPath)) continue
-    const indexStat = node_fs.statSync(indexPath)
-    if (indexStat.isFile()) return indexPath
-  }
-  return undefined
-}
-
-function buildCandidates(basePath: string): string[] {
-  const candidates: string[] = []
-  for (const extension of FILE_EXTENSIONS) {
-    candidates.push(basePath + extension)
-  }
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    candidates.push(node_path.join(basePath, `index${extension}`))
-  }
-  for (const extension of JS_IMPORT_EXTENSIONS) {
-    if (!basePath.endsWith(extension)) continue
-    const tsExtension = extension === '.jsx' ? '.tsx' : '.ts'
-    candidates.push(basePath.slice(0, -extension.length) + tsExtension)
-  }
-  return candidates
-}
-
-const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
-
-const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
 function isPublicEntrypoint(filePath: string): boolean {
   return ENTRYPOINT_FILES.has(node_path.basename(filePath))

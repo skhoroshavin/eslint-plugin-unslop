@@ -6,7 +6,8 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 
 const TSCONFIG = {
   path: 'tsconfig.json',
-  content: '{"compilerOptions":{"strict":true},"include":["**/*.ts"]}',
+  content:
+    '{"compilerOptions":{"strict":true,"baseUrl":".","paths":{"@/*":["src/*"]}},"include":["**/*.ts"]}',
 }
 
 const SHARED_SETTINGS = {

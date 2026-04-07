@@ -1,5 +1,3 @@
-import node_fs from 'node:fs'
-
 import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
@@ -8,6 +6,7 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 
 import {
   ArchitecturePolicyResolver,
+  ProjectContext,
   getDeclarationNamesFromExport,
   normalizePath,
 } from '../../utils/index.js'
@@ -41,11 +40,16 @@ export default {
 
     const projectRoot = resolver.deriveProjectRoot(filename)
     if (projectRoot === undefined) return {}
+
     const sourceDir = node_path.join(projectRoot, sourceRoot)
+    const projectContext = ProjectContext.forFile(filename, {
+      sourceRoot,
+      projectRoot,
+    })
     const analyzer = new NoFalseSharingAnalyzer(context, {
-      resolver,
       entrypointFile: filename,
       sourceDir,
+      projectContext,
     })
 
     return {
@@ -62,8 +66,8 @@ class NoFalseSharingAnalyzer {
     private readonly options: SymbolAnalysisOptions,
   ) {
     this.scanner = new SymbolUsageScanner({
-      resolver: options.resolver,
       entrypointFile: options.entrypointFile,
+      projectContext: options.projectContext,
     })
   }
 
@@ -159,9 +163,6 @@ function getSingleConsumerGroup(groups: Set<string>): string {
   return ` (group: ${single})`
 }
 
-// eslint-disable-next-line unslop/read-friendly-order
-const LOCAL_SOURCE_RE = /(?:import|export)\s+(?:type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g
-
 class SymbolUsageScanner {
   constructor(private readonly options: ScannerOptions) {
     this.entrypointFile = normalizePath(options.entrypointFile)
@@ -171,80 +172,53 @@ class SymbolUsageScanner {
 
   scanSourceTree(sourceDir: string, exportedSymbols: Set<string>): SymbolImporter[] {
     const importers: SymbolImporter[] = []
-    this.scanDirectory(sourceDir, { exportedSymbols, importers })
+    for (const filePath of this.options.projectContext.listSourceFiles(sourceDir)) {
+      if (normalizePath(filePath) === this.entrypointFile) continue
+      const symbols = this.getImportedSymbols(filePath, exportedSymbols)
+      if (symbols.length === 0) continue
+      importers.push({ filePath, symbols })
+    }
     return importers
   }
 
-  private scanDirectory(directoryPath: string, state: ScanState): void {
-    const baseName = node_path.basename(directoryPath)
-    if (baseName === 'node_modules' || baseName === '.git') return
-
-    const entries = readDirectoryEntries(directoryPath)
-    if (entries === undefined) return
-
-    for (const entry of entries) {
-      const fullPath = node_path.join(directoryPath, entry.name)
-      if (entry.isDirectory()) {
-        this.scanDirectory(fullPath, state)
-        continue
-      }
-      this.scanFile(fullPath, state)
-    }
-  }
-
-  private scanFile(filePath: string, state: ScanState): void {
-    if (!isSourceFile(filePath)) return
-    if (normalizePath(filePath) === this.entrypointFile) return
-    const symbols = this.getImportedSymbols(filePath, state.exportedSymbols)
-    if (symbols.length === 0) return
-    state.importers.push({ filePath, symbols })
-  }
-
   private getImportedSymbols(filePath: string, exportedSymbols: Set<string>): string[] {
-    const content = readFileContent(filePath)
-    if (content === undefined) return []
     const result = new Set<string>()
-    const matcher = new RegExp(LOCAL_SOURCE_RE)
-    let match: RegExpExecArray | null
-    while ((match = matcher.exec(content)) !== null) {
-      const clause = match[1]
-      const specifier = match[2]
-      const resolvedTarget = this.options.resolver.resolveImportTarget(filePath, specifier)
-      if (!isSamePath(resolvedTarget, this.options.entrypointFile)) continue
-      this.addMatchingNamedSymbols(result, clause, exportedSymbols)
+    for (const declaration of this.options.projectContext.getImportDeclarations(filePath)) {
+      this.addMatchingSymbols({
+        symbolNames: declaration.getNamedImports().map((specifier) => specifier.getName()),
+        specifier: declaration.getModuleSpecifierValue(),
+        filePath,
+        exportedSymbols,
+        result,
+      })
+    }
+    const sourceFile = this.options.projectContext.getSourceFile(filePath)
+    if (sourceFile === undefined) return [...result]
+    for (const declaration of sourceFile.getExportDeclarations()) {
+      const specifier = declaration.getModuleSpecifierValue()
+      if (specifier === undefined || specifier.length === 0) continue
+      this.addMatchingSymbols({
+        symbolNames: declaration.getNamedExports().map((exported) => exported.getName()),
+        specifier,
+        filePath,
+        exportedSymbols,
+        result,
+      })
     }
     return [...result]
   }
 
-  private addMatchingNamedSymbols(
-    result: Set<string>,
-    clause: string,
-    exportedSymbols: Set<string>,
-  ): void {
-    for (const name of extractNamedSymbols(clause)) {
-      if (!exportedSymbols.has(name)) continue
-      result.add(name)
+  private addMatchingSymbols(options: MatchingSymbolOptions): void {
+    const resolvedTarget = this.options.projectContext.resolveLocalSpecifier(
+      options.filePath,
+      options.specifier,
+    )
+    if (!isSamePath(resolvedTarget, this.entrypointFile)) return
+    for (const name of options.symbolNames) {
+      if (name.length === 0) continue
+      if (!options.exportedSymbols.has(name)) continue
+      options.result.add(name)
     }
-  }
-}
-
-function readDirectoryEntries(dir: string): node_fs.Dirent[] | undefined {
-  try {
-    return node_fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return undefined
-  }
-}
-
-function isSourceFile(filePath: string): boolean {
-  return /\.[jt]sx?$/.test(filePath)
-}
-
-function readFileContent(filePath: string): string | undefined {
-  try {
-    return node_fs.readFileSync(filePath, 'utf-8')
-  } catch {
-    return undefined
   }
 }
 
@@ -253,30 +227,12 @@ function isSamePath(value: string | undefined, expected: string): boolean {
   return normalizePath(value) === normalizePath(expected)
 }
 
-function extractNamedSymbols(clause: string): string[] {
-  const openBrace = clause.indexOf('{')
-  if (openBrace === -1) return []
-  const closeBrace = clause.indexOf('}', openBrace + 1)
-  if (closeBrace === -1) return []
-
-  const rawList = clause.slice(openBrace + 1, closeBrace)
-  const symbols: string[] = []
-  for (const rawItem of rawList.split(',')) {
-    const symbol = parseNamedSymbol(rawItem)
-    if (symbol !== undefined) {
-      symbols.push(symbol)
-    }
-  }
-  return symbols
-}
-
-function parseNamedSymbol(raw: string): string | undefined {
-  const trimmed = raw.trim().replace(/^type\s+/, '')
-  if (trimmed.length === 0) return undefined
-  const [left] = trimmed.split(/\s+as\s+/)
-  if (left === undefined) return undefined
-  const normalized = left.trim()
-  return normalized.length > 0 ? normalized : undefined
+interface MatchingSymbolOptions {
+  symbolNames: readonly string[]
+  specifier: string
+  filePath: string
+  exportedSymbols: Set<string>
+  result: Set<string>
 }
 
 interface SymbolImporter {
@@ -285,17 +241,12 @@ interface SymbolImporter {
 }
 
 interface SymbolAnalysisOptions {
-  resolver: ArchitecturePolicyResolver
   entrypointFile: string
   sourceDir: string
+  projectContext: ProjectContext
 }
 
 interface ScannerOptions {
-  resolver: ArchitecturePolicyResolver
   entrypointFile: string
-}
-
-interface ScanState {
-  exportedSymbols: Set<string>
-  importers: SymbolImporter[]
+  projectContext: ProjectContext
 }
