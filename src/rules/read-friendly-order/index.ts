@@ -58,9 +58,10 @@ class TopLevelOrderAnalyzer {
   analyzeProgram(program: Program & Rule.NodeParentExtension): void {
     const entries = this.collectEntries(program)
     const declarations = entries.filter(isDeclarationEntry)
-    this.filterDepsToLocal(declarations)
-    const eager = this.buildEagerSet(declarations)
-    const cyclic = this.findCyclic(declarations)
+    const namedDeclarations = collectNamedEntries(declarations)
+    this.filterDepsToLocal(declarations, namedDeclarations.names)
+    const eager = this.buildEagerSet(declarations, namedDeclarations.names)
+    const cyclic = this.findCyclic(namedDeclarations)
     const violations = this.findViolations(declarations, eager, cyclic)
     if (violations.length === 0) return
     this.reportAll(violations, program, entries)
@@ -87,17 +88,13 @@ class TopLevelOrderAnalyzer {
     return entries
   }
 
-  private filterDepsToLocal(declarations: Entry[]): void {
-    const localNames = new Set(
-      declarations.filter((entry) => entry.name).map((entry) => entry.name!),
-    )
+  private filterDepsToLocal(declarations: Entry[], localNames: Set<string>): void {
     for (const entry of declarations) {
       entry.deps = new Set([...entry.deps].filter((dependency) => localNames.has(dependency)))
     }
   }
 
-  private buildEagerSet(entries: Entry[]): Set<string> {
-    const localNames = new Set(entries.filter((entry) => entry.name).map((entry) => entry.name!))
+  private buildEagerSet(entries: Entry[], localNames: Set<string>): Set<string> {
     const eagerSymbols = new Set<string>()
     for (const entry of entries) {
       if (!entry.eager) continue
@@ -130,14 +127,10 @@ class TopLevelOrderAnalyzer {
     }
   }
 
-  private findCyclic(entries: Entry[]): Set<string> {
-    const byName = new Map(
-      entries.filter((entry) => entry.name).map((entry) => [entry.name!, entry]),
-    )
-    const localNames = new Set(byName.keys())
+  private findCyclic(namedEntries: NamedEntries): Set<string> {
     const cyclic = new Set<string>()
-    for (const [name] of byName) {
-      if (this.reachesSelf(name, name, byName, localNames, new Set())) {
+    for (const [name] of namedEntries.byName) {
+      if (this.reachesSelf(name, name, namedEntries.byName, namedEntries.names, new Set())) {
         cyclic.add(name)
       }
     }
@@ -238,6 +231,20 @@ class TopLevelOrderAnalyzer {
     }
     return result
   }
+}
+
+interface NamedEntries {
+  byName: Map<string, Entry>
+  names: Set<string>
+}
+
+function collectNamedEntries(entries: Entry[]): NamedEntries {
+  const byName = new Map<string, Entry>()
+  for (const entry of entries) {
+    if (entry.name === null) continue
+    byName.set(entry.name, entry)
+  }
+  return { byName, names: new Set(byName.keys()) }
 }
 
 function getBand(entry: Entry): number {

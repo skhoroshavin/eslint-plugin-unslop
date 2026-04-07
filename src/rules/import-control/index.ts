@@ -52,13 +52,14 @@ function checkDeclaration(
   const specifier = getSpecifier(node)
   if (specifier === undefined) return
 
-  const importer = getImporter(filename, resolver)
+  const importer = resolver.matchFile(filename)
   if (importer === undefined) return
 
-  const targetFile = getTargetFile(filename, resolver, specifier)
-  if (targetFile === undefined) return
+  const resolvedTarget = resolver.resolveImportTarget(filename, specifier)
+  if (resolvedTarget === undefined) return
+  const targetFile = normalizePath(resolvedTarget)
 
-  const importee = getImportee(targetFile, resolver)
+  const importee = resolver.matchFile(targetFile)
   if (importee === undefined) return
 
   checkModuleEdge({
@@ -81,27 +82,12 @@ function getSpecifier(
   return typeof source.value === 'string' ? source.value : undefined
 }
 
-function getImporter(filename: string, resolver: ArchitecturePolicyResolver) {
-  return resolver.matchFile(filename)
-}
-
-function getTargetFile(
-  filename: string,
-  resolver: ArchitecturePolicyResolver,
-  specifier: string,
-): string | undefined {
-  const resolved = resolver.resolveImportTarget(filename, specifier)
-  return resolved === undefined ? undefined : normalizePath(resolved)
-}
-
-function getImportee(targetFile: string, resolver: ArchitecturePolicyResolver) {
-  return resolver.matchFile(targetFile)
-}
-
 function checkModuleEdge(options: EdgeCheckOptions): void {
   const { context, node, specifier, importer, importee, targetFile, importerFile } = options
   if (importer.instance === importee.instance) {
-    reportDeepSameModuleImport(context, node, importerFile, targetFile)
+    if (isSameModuleImportTooDeep(importerFile, targetFile)) {
+      context.report({ node, messageId: 'tooDeep' })
+    }
     return
   }
 
@@ -153,16 +139,6 @@ interface EdgeCheckOptions {
   importee: NonNullable<ReturnType<ArchitecturePolicyResolver['matchFile']>>
   targetFile: string
   resolver: ArchitecturePolicyResolver
-}
-
-function reportDeepSameModuleImport(
-  context: Rule.RuleContext,
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  importerFile: string,
-  targetFile: string,
-): void {
-  if (!isSameModuleImportTooDeep(importerFile, targetFile)) return
-  context.report({ node, messageId: 'tooDeep' })
 }
 
 function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {

@@ -1,6 +1,6 @@
 import type { Rule } from 'eslint'
 
-import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
+import type { ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
 import { ArchitecturePolicyResolver, getDeclarationNamesFromExport } from '../../utils/index.js'
 
@@ -40,7 +40,7 @@ export default {
       },
       ExportAllDeclaration(node) {
         // Always reject export * from ... in all files per spec
-        checkExportAll(context, node)
+        context.report({ node, messageId: 'exportAllForbidden' })
       },
       ExportDefaultDeclaration(node) {
         if (state?.patterns === undefined) return
@@ -58,8 +58,7 @@ function buildRuleState(context: Rule.RuleContext, filename: string): RuleState 
   const moduleMatch = resolver.matchFile(filename)
   if (moduleMatch === undefined) return undefined
 
-  const hasExportContract = moduleMatch.policy.exports.length > 0
-  if (!hasExportContract) return {}
+  if (moduleMatch.policy.exports.length === 0) return undefined
 
   const built = buildPatterns(moduleMatch.policy.exports)
   if (built.invalid !== undefined) {
@@ -123,10 +122,6 @@ function checkDefaultExport(
 ): void {
   if (matchesAnyPattern('default', patterns)) return
   context.report({ node, messageId: 'symbolDenied', data: { symbol: 'default' } })
-}
-
-function checkExportAll(context: Rule.RuleContext, node: ExportAllDeclaration): void {
-  context.report({ node, messageId: 'exportAllForbidden' })
 }
 
 function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {

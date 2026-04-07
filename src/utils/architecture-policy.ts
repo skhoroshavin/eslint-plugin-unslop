@@ -132,10 +132,13 @@ interface ArchitecturePolicy {
 
 function applySourceRoot(pathValue: string, sourceRoot?: string): string | undefined {
   if (sourceRoot === undefined) return pathValue
-  const withSlashes = `/${sourceRoot}/`
-  const index = pathValue.indexOf(withSlashes)
-  if (index === -1) return undefined
-  return pathValue.slice(index + withSlashes.length)
+  const markerIndex = findSourceRootMarkerIndex(pathValue, sourceRoot)
+  if (markerIndex === -1) return undefined
+  return pathValue.slice(markerIndex + sourceRoot.length + 2)
+}
+
+function findSourceRootMarkerIndex(pathValue: string, sourceRoot: string): number {
+  return pathValue.indexOf(`/${sourceRoot}/`)
 }
 
 function collectModuleMatches(
@@ -234,10 +237,10 @@ function resolveImportTarget(
   specifier: string,
 ): string | undefined {
   if (!isLocalSpecifier(specifier)) return undefined
-  const importerDir = node_path.dirname(importerFile)
   if (specifier.startsWith('@/')) {
     return resolveAliasImport(importerFile, sourceRoot, specifier)
   }
+  const importerDir = node_path.dirname(importerFile)
   const base = node_path.resolve(importerDir, specifier)
   return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
 }
@@ -253,10 +256,9 @@ function resolveAliasImport(
 ): string | undefined {
   if (sourceRoot === undefined) return undefined
   const normalized = normalizePath(importerFile)
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  const projectRoot = normalized.slice(0, index)
+  const markerIndex = findSourceRootMarkerIndex(normalized, sourceRoot)
+  if (markerIndex === -1) return undefined
+  const projectRoot = normalized.slice(0, markerIndex)
   const remainder = specifier.slice(2)
   const base = node_path.join(projectRoot, sourceRoot, remainder)
   return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
@@ -269,8 +271,7 @@ function resolveInsideSourceRoot(
   if (filePath === undefined) return undefined
   if (sourceRoot === undefined) return filePath
   const normalized = normalizePath(filePath)
-  const marker = `/${sourceRoot}/`
-  return normalized.includes(marker) ? filePath : undefined
+  return findSourceRootMarkerIndex(normalized, sourceRoot) === -1 ? undefined : filePath
 }
 
 export function normalizePath(pathValue: string): string {

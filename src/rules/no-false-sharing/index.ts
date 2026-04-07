@@ -73,13 +73,20 @@ class NoFalseSharingAnalyzer {
     const exportedSymbols = collectExportedSymbols(node)
     if (exportedSymbols.length === 0) return
 
-    const consumerGroupsBySymbol = this.findConsumerGroupsBySymbol(exportedSymbols)
-    this.reportUnsharedSymbols(node, exportedSymbols, consumerGroupsBySymbol)
+    const exportedSymbolSet = new Set(exportedSymbols)
+    const consumerGroupsBySymbol = this.findConsumerGroupsBySymbol(
+      exportedSymbols,
+      exportedSymbolSet,
+    )
+    this.reportUnsharedSymbols(node, consumerGroupsBySymbol)
   }
 
-  private findConsumerGroupsBySymbol(exportedSymbols: string[]): Map<string, Set<string>> {
+  private findConsumerGroupsBySymbol(
+    exportedSymbols: string[],
+    exportedSymbolSet: Set<string>,
+  ): Map<string, Set<string>> {
     const bySymbol = initializeConsumerGroupsBySymbol(exportedSymbols)
-    const importers = this.scanner.scanSourceTree(this.options.sourceDir, new Set(exportedSymbols))
+    const importers = this.scanner.scanSourceTree(this.options.sourceDir, exportedSymbolSet)
     for (const importer of importers) {
       const consumerGroup = getConsumerGroup(importer.filePath, this.options.sourceDir)
       for (const symbol of importer.symbols) {
@@ -91,11 +98,9 @@ class NoFalseSharingAnalyzer {
 
   private reportUnsharedSymbols(
     node: Program,
-    exportedSymbols: string[],
     consumerGroupsBySymbol: Map<string, Set<string>>,
   ): void {
-    for (const symbol of exportedSymbols) {
-      const groups = consumerGroupsBySymbol.get(symbol) ?? new Set<string>()
+    for (const [symbol, groups] of consumerGroupsBySymbol) {
       if (groups.size >= MIN_CONSUMER_GROUPS) continue
       this.context.report({
         node,
