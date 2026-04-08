@@ -30,12 +30,17 @@ export class ProjectContext {
     if (this.hasProjectConfig) {
       const projectResolved = this.resolveWithProject(importerFile, specifier)
       if (projectResolved !== undefined) return projectResolved
-      if (canFallbackAliasResolution(specifier, this.project.getCompilerOptions())) {
-        return resolveWithFallback(importerFile, specifier, this.options)
-      }
-      return undefined
+      if (!this.canFallbackResolve(specifier)) return undefined
     }
     return resolveWithFallback(importerFile, specifier, this.options)
+  }
+
+  private canFallbackResolve(specifier: string): boolean {
+    if (specifier.startsWith('.')) return true
+    if (!specifier.startsWith('@/')) return false
+    const paths = this.project.getCompilerOptions().paths
+    if (paths === undefined) return false
+    return '@/*' in paths
   }
 
   listSourceFiles(sourceDir: string): readonly string[] {
@@ -141,16 +146,6 @@ function resolveWithFallback(
   const importerDir = node_path.dirname(importerFile)
   const base = node_path.resolve(importerDir, specifier)
   return resolveInsideSourceRoot(resolveExistingFile(base), options.sourceRoot)
-}
-
-function canFallbackAliasResolution(
-  specifier: string,
-  compilerOptions: ts.CompilerOptions,
-): boolean {
-  if (!specifier.startsWith('@/')) return false
-  const paths = compilerOptions.paths
-  if (paths === undefined) return false
-  return Object.keys(paths).includes('@/*')
 }
 
 function resolveAliasImport(specifier: string, options: ProjectContextOptions): string | undefined {
