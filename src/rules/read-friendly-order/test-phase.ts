@@ -1,18 +1,6 @@
-/* eslint-disable unslop/read-friendly-order */
 import type { Rule } from 'eslint'
+
 import type { ExpressionStatement, Node, Program } from 'estree'
-
-type Phase = 'setup' | 'teardown' | 'test'
-
-interface PhaseCall {
-  node: Node
-  phase: Phase
-  idx: number
-}
-
-const SETUP = new Set(['beforeAll', 'beforeEach'])
-const TEARDOWN = new Set(['afterAll', 'afterEach'])
-const TESTS = new Set(['test', 'it', 'describe'])
 
 export function checkTestPhases(ctx: Rule.RuleContext, p: Program): void {
   const calls = collectTestCalls(p)
@@ -70,6 +58,12 @@ function classifyCallee(name: string): Phase | null {
   return null
 }
 
+const SETUP = new Set(['beforeAll', 'beforeEach'])
+
+const TEARDOWN = new Set(['afterAll', 'afterEach'])
+
+const TESTS = new Set(['test', 'it', 'describe'])
+
 function buildPhaseFix(
   ctx: Rule.RuleContext,
   p: Program,
@@ -97,3 +91,11 @@ function buildPhaseOrder(p: Program, calls: PhaseCall[]): Array<{ node: Node; id
   }
   return [...others, ...setups, ...teardowns, ...tests]
 }
+
+interface PhaseCall {
+  node: Node
+  phase: Phase
+  idx: number
+}
+
+type Phase = 'setup' | 'teardown' | 'test'

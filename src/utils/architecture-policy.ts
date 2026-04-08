@@ -4,6 +4,10 @@ import type { Rule } from 'eslint'
 
 import { ProjectContext, normalizePath } from './project-context.js'
 
+export function isPublicEntrypoint(filePath: string): boolean {
+  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
+}
+
 export class ArchitecturePolicyResolver {
   constructor(
     private readonly policy: ArchitecturePolicy,
@@ -46,6 +50,17 @@ export class ArchitecturePolicyResolver {
   }
 }
 
+const ENTRYPOINT_FILES = new Set([
+  'index.ts',
+  'index.tsx',
+  'index.js',
+  'index.jsx',
+  'types.ts',
+  'types.tsx',
+  'types.js',
+  'types.jsx',
+])
+
 function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
   const unslopSettings = getUnslopSettings(context.settings)
   if (unslopSettings === undefined) return undefined
@@ -58,6 +73,11 @@ function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy |
   if (modules.length === 0) return undefined
 
   return { sourceRoot, modules }
+}
+
+interface ArchitecturePolicy {
+  sourceRoot?: string
+  modules: ArchitectureModuleDefinition[]
 }
 
 function getUnslopSettings(settings: unknown): Record<string, unknown> | undefined {
@@ -134,11 +154,6 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
     policy: { imports: [], exports: [], shared: false },
     order: 0,
   }
-}
-
-interface ArchitecturePolicy {
-  sourceRoot?: string
-  modules: ArchitectureModuleDefinition[]
 }
 
 function getPathWithinSourceRoot(pathValue: string, sourceRoot?: string): string | undefined {
@@ -248,29 +263,14 @@ interface MatchedArchitectureModule {
   order: number
 }
 
-function countWildcards(value: string): number {
-  return value.split('*').length - 1
-}
-
-export function isPublicEntrypoint(filePath: string): boolean {
-  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
-}
-
-const ENTRYPOINT_FILES = new Set([
-  'index.ts',
-  'index.tsx',
-  'index.js',
-  'index.jsx',
-  'types.ts',
-  'types.tsx',
-  'types.js',
-  'types.jsx',
-])
-
 interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
   shared: boolean
+}
+
+function countWildcards(value: string): number {
+  return value.split('*').length - 1
 }
 
 function trimSlashes(value: string): string {

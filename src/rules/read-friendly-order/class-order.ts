@@ -1,18 +1,10 @@
-/* eslint-disable no-restricted-syntax, unslop/read-friendly-order */
 import type { Rule } from 'eslint'
-import type { ClassBody, MethodDefinition, Node, PropertyDefinition } from 'estree'
-import { walkThisDeps } from './ast-utils.js'
-import { findCyclicNodes, kahnSort } from './graph-utils.js'
 
-interface MemberEntry {
-  node: Node
-  idx: number
-  name: string | null
-  deps: Set<string>
-  kind: 'constructor' | 'field' | 'method'
-  isPublic: boolean
-  computed: boolean
-}
+import type { ClassBody, MethodDefinition, Node, PropertyDefinition } from 'estree'
+
+import { walkThisDeps } from './ast-utils.js'
+
+import { findCyclicNodes, kahnSort } from './graph-utils.js'
 
 export function checkClass(ctx: Rule.RuleContext, classBody: Node): void {
   if (classBody.type !== 'ClassBody') return
@@ -21,9 +13,6 @@ export function checkClass(ctx: Rule.RuleContext, classBody: Node): void {
 }
 
 class ClassOrderAnalyzer {
-  private readonly members: MemberEntry[]
-  private readonly hasComputedMembers: boolean
-
   constructor(
     private readonly context: Rule.RuleContext,
     private readonly classBody: ClassBody,
@@ -37,6 +26,9 @@ class ClassOrderAnalyzer {
     this.members = collectMembers(body)
     this.hasComputedMembers = this.members.some((member) => member.computed)
   }
+
+  private readonly members: MemberEntry[]
+  private readonly hasComputedMembers: boolean
 
   analyze(): void {
     if (this.members.length === 0) return
@@ -124,8 +116,6 @@ function sortMembers(members: MemberEntry[]): MemberEntry[] {
   return result
 }
 
-type ClassMember = MethodDefinition | PropertyDefinition
-
 function collectMembers(body: ClassBody['body']): MemberEntry[] {
   return body.flatMap((node, idx) => {
     if (node.type === 'StaticBlock') return []
@@ -138,11 +128,27 @@ function collectMember(node: ClassMember, idx: number): MemberEntry {
   const name = getMemberName(node)
   const deps = new Set<string>()
   walkThisDeps(node, deps)
-  const accessibility = Reflect.get(node, 'accessibility') as string | undefined
+  const accessibility = strProp(node, 'accessibility')
   const isPublic =
     node.type === 'PropertyDefinition' &&
     (accessibility === 'public' || accessibility === undefined)
   return { node, idx, name, deps, kind, isPublic, computed: node.computed }
+}
+
+function strProp(obj: unknown, key: string): string | undefined {
+  if (typeof obj !== 'object' || obj === null) return undefined
+  const value = Reflect.get(obj, key)
+  return typeof value === 'string' ? value : undefined
+}
+
+interface MemberEntry {
+  node: Node
+  idx: number
+  name: string | null
+  deps: Set<string>
+  kind: 'constructor' | 'field' | 'method'
+  isPublic: boolean
+  computed: boolean
 }
 
 function getMemberKind(node: ClassMember): 'constructor' | 'field' | 'method' {
@@ -157,3 +163,5 @@ function getMemberName(node: ClassMember): string | null {
   if (key.type === 'Identifier') return key.name
   return null
 }
+
+type ClassMember = MethodDefinition | PropertyDefinition

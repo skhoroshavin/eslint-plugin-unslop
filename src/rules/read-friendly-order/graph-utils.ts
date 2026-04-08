@@ -1,10 +1,3 @@
-/* eslint-disable complexity */
-
-interface GraphNode {
-  name: string | null
-  deps: Set<string>
-}
-
 export function findCyclicNodes<T extends GraphNode>(nodes: T[]): Set<string> {
   const byName = new Map<string, T>()
   for (const node of nodes) {
@@ -17,6 +10,11 @@ export function findCyclicNodes<T extends GraphNode>(nodes: T[]): Set<string> {
     }
   }
   return cyclic
+}
+
+export function kahnSort<T extends GraphNode>(nodes: T[], compare: (a: T, b: T) => number): T[] {
+  const sorter = new KahnSorter(nodes, compare)
+  return sorter.sort()
 }
 
 function reachesSelf<T extends GraphNode>(
@@ -37,47 +35,72 @@ function reachesSelf<T extends GraphNode>(
   return false
 }
 
-export function kahnSort<T extends GraphNode>(nodes: T[], compare: (a: T, b: T) => number): T[] {
-  const byName = new Map<string, T>()
-  for (const node of nodes) {
-    if (node.name !== null) byName.set(node.name, node)
-  }
-  const inDeg = new Map<string, number>()
-  for (const name of byName.keys()) inDeg.set(name, 0)
-  for (const node of nodes) {
-    for (const dep of node.deps) {
-      if (inDeg.has(dep)) inDeg.set(dep, inDeg.get(dep)! + 1)
+class KahnSorter<T extends GraphNode> {
+  constructor(
+    private readonly nodes: T[],
+    private readonly compare: (a: T, b: T) => number,
+  ) {
+    for (const node of this.nodes) {
+      if (node.name !== null) this.byName.set(node.name, node)
     }
-  }
-  return drain(nodes, inDeg, byName, compare)
-}
-
-function drain<T extends GraphNode>(
-  nodes: T[],
-  inDeg: Map<string, number>,
-  byName: Map<string, T>,
-  compare: (a: T, b: T) => number,
-): T[] {
-  const queue = nodes.filter((n) => n.name === null || inDeg.get(n.name) === 0)
-  const result: T[] = []
-  const placed = new Set<string>()
-
-  while (queue.length > 0) {
-    queue.sort(compare)
-    const node = queue.shift()!
-    result.push(node)
-    if (node.name !== null) placed.add(node.name)
-    for (const dep of node.deps) {
-      if (placed.has(dep) || !inDeg.has(dep)) continue
-      inDeg.set(dep, inDeg.get(dep)! - 1)
-      if (inDeg.get(dep) === 0) {
-        const depNode = byName.get(dep)
-        if (depNode !== undefined && !placed.has(dep)) queue.push(depNode)
+    for (const name of this.byName.keys()) this.inDeg.set(name, 0)
+    for (const node of this.nodes) {
+      for (const dep of node.deps) {
+        this.incrementInDegree(dep)
       }
     }
+    this.queue = this.nodes.filter((node) => node.name === null || this.inDeg.get(node.name) === 0)
   }
-  for (const node of nodes) {
-    if (node.name !== null && !placed.has(node.name)) result.push(node)
+
+  private readonly byName = new Map<string, T>()
+  private readonly inDeg = new Map<string, number>()
+  private readonly queue: T[]
+  private readonly result: T[] = []
+  private readonly placed = new Set<string>()
+
+  sort(): T[] {
+    this.processQueue()
+    for (const node of this.nodes) {
+      if (node.name !== null && !this.placed.has(node.name)) this.result.push(node)
+    }
+    return this.result
   }
-  return result
+
+  private incrementInDegree(name: string): void {
+    const degree = this.inDeg.get(name)
+    if (degree === undefined) return
+    this.inDeg.set(name, degree + 1)
+  }
+
+  private processQueue(): void {
+    while (this.queue.length > 0) {
+      this.queue.sort(this.compare)
+      const node = this.queue.shift()
+      if (node === undefined) return
+      this.result.push(node)
+      if (node.name !== null) this.placed.add(node.name)
+      this.relaxDeps(node)
+    }
+  }
+
+  private relaxDeps(node: T): void {
+    for (const dep of node.deps) {
+      if (this.placed.has(dep) || !this.inDeg.has(dep)) continue
+      this.decrementInDegree(dep)
+      if (this.inDeg.get(dep) !== 0) continue
+      const depNode = this.byName.get(dep)
+      if (depNode !== undefined && !this.placed.has(dep)) this.queue.push(depNode)
+    }
+  }
+
+  private decrementInDegree(name: string): void {
+    const degree = this.inDeg.get(name)
+    if (degree === undefined) return
+    this.inDeg.set(name, degree - 1)
+  }
+}
+
+interface GraphNode {
+  name: string | null
+  deps: Set<string>
 }

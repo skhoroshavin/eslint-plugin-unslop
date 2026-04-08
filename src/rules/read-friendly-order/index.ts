@@ -231,6 +231,11 @@ class TopLevelOrderAnalyzer {
   }
 }
 
+interface Violation {
+  entry: Entry
+  messageId: 'moveHelperBelow' | 'moveConstantBelow' | 'publicApiAbovePrivate'
+}
+
 function buildCanonicalOrder(entries: Entry[]): Entry[] {
   const compare = (a: Entry, b: Entry): number => {
     const priorityDiff = kindPriority(a) - kindPriority(b)
@@ -305,10 +310,6 @@ function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
   return best
 }
 
-function isConst(name: string): boolean {
-  return /^[A-Z][A-Z_0-9]+$/.test(name)
-}
-
 function kindPriority(entry: Entry): number {
   const kind = getDeclKind(entry.node)
   switch (kind) {
@@ -323,15 +324,6 @@ function kindPriority(entry: Entry): number {
   }
 }
 
-function getDependencyMessageId(name: string): 'moveHelperBelow' | 'moveConstantBelow' {
-  return isConst(name) ? 'moveConstantBelow' : 'moveHelperBelow'
-}
-
-interface Violation {
-  entry: Entry
-  messageId: 'moveHelperBelow' | 'moveConstantBelow' | 'publicApiAbovePrivate'
-}
-
 interface Entry {
   node: Node
   idx: number
@@ -343,4 +335,12 @@ interface Entry {
   isLocalExportList: boolean
   isLocalExportDefault: boolean
   isLocalPublicExport: boolean
+}
+
+function getDependencyMessageId(name: string): 'moveHelperBelow' | 'moveConstantBelow' {
+  return isConst(name) ? 'moveConstantBelow' : 'moveHelperBelow'
+}
+
+function isConst(name: string): boolean {
+  return /^[A-Z][A-Z_0-9]+$/.test(name)
 }

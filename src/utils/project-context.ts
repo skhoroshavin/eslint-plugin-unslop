@@ -28,7 +28,12 @@ export class ProjectContext {
   resolveLocalSpecifier(importerFile: string, specifier: string): string | undefined {
     if (!isLocalSpecifier(specifier)) return undefined
     if (this.hasProjectConfig) {
-      return this.resolveWithProject(importerFile, specifier)
+      const projectResolved = this.resolveWithProject(importerFile, specifier)
+      if (projectResolved !== undefined) return projectResolved
+      if (canFallbackAliasResolution(specifier, this.project.getCompilerOptions())) {
+        return resolveWithFallback(importerFile, specifier, this.options)
+      }
+      return undefined
     }
     return resolveWithFallback(importerFile, specifier, this.options)
   }
@@ -136,6 +141,16 @@ function resolveWithFallback(
   const importerDir = node_path.dirname(importerFile)
   const base = node_path.resolve(importerDir, specifier)
   return resolveInsideSourceRoot(resolveExistingFile(base), options.sourceRoot)
+}
+
+function canFallbackAliasResolution(
+  specifier: string,
+  compilerOptions: ts.CompilerOptions,
+): boolean {
+  if (!specifier.startsWith('@/')) return false
+  const paths = compilerOptions.paths
+  if (paths === undefined) return false
+  return Object.keys(paths).includes('@/*')
 }
 
 function resolveAliasImport(specifier: string, options: ProjectContextOptions): string | undefined {
