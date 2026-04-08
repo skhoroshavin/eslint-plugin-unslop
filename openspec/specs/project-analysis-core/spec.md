@@ -1,3 +1,7 @@
+## Purpose
+
+Define the shared project analysis context used by architecture-aware rules.
+
 ## ADDED Requirements
 
 ### Requirement: Architecture-aware rules SHALL use a shared project context
