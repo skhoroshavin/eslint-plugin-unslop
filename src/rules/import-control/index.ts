@@ -61,7 +61,7 @@ function checkDeclaration(
   const importer = getImporter(filename, policy)
   if (importer === undefined) return
 
-  const targetFile = getTargetFile(filename, policy.sourceRoot, specifier)
+  const targetFile = getTargetFile(filename, policy.tsconfigInfo, specifier)
   if (targetFile === undefined) return
 
   const importee = getImportee(targetFile, policy)
@@ -95,10 +95,10 @@ function getImporter(
 
 function getTargetFile(
   filename: string,
-  sourceRoot: string | undefined,
+  tsconfigInfo: NonNullable<ReturnType<typeof readArchitecturePolicy>>['tsconfigInfo'],
   specifier: string,
 ): string | undefined {
-  const resolved = resolveImportTarget(filename, sourceRoot, specifier)
+  const resolved = resolveImportTarget(filename, tsconfigInfo, specifier)
   return resolved === undefined ? undefined : normalizePath(resolved)
 }
 

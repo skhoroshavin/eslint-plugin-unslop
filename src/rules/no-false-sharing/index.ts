@@ -7,13 +7,17 @@ import type { Rule } from 'eslint'
 import type { ExportNamedDeclaration, Program } from 'estree'
 
 import {
+  getTsconfigInfo,
   getDeclarationNamesFromExport,
   isPublicEntrypoint,
   matchFileToArchitectureModule,
   normalizePath,
   readArchitecturePolicy,
+  resolvePathAlias,
   resolveImportTarget,
 } from '../../utils/index.js'
+
+import type { TsconfigInfo } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -35,15 +39,17 @@ export default {
     const policy = readArchitecturePolicy(context)
     if (policy === undefined) return {}
 
+    const tsconfigInfo = getTsconfigInfo(filename)
+    if (tsconfigInfo === undefined) return {}
+
     const matched = matchFileToArchitectureModule(filename, policy)
     if (matched === undefined || !matched.policy.shared) return {}
     if (!isPublicEntrypoint(filename)) return {}
 
-    const sourceRoot = policy.sourceRoot
+    const sourceRoot = tsconfigInfo.sourceRoot
     if (sourceRoot === undefined) return {}
 
-    const projectRoot = deriveProjectRoot(filename, sourceRoot)
-    if (projectRoot === undefined) return {}
+    const projectRoot = tsconfigInfo.projectRoot
     const sourceDir = node_path.join(projectRoot, sourceRoot)
 
     return {
@@ -51,7 +57,7 @@ export default {
         reportUnsharedSymbols(context, node, {
           entrypointFile: filename,
           sourceDir,
-          sourceRoot,
+          tsconfigInfo,
         })
       },
     }
@@ -69,7 +75,7 @@ function reportUnsharedSymbols(
   const consumerGroupsBySymbol = findConsumerGroupsBySymbol(
     options.entrypointFile,
     options.sourceDir,
-    options.sourceRoot,
+    options.tsconfigInfo,
     exportedSymbols,
   )
 
@@ -114,7 +120,7 @@ function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<st
 function findConsumerGroupsBySymbol(
   entrypointFile: string,
   sourceDir: string,
-  sourceRoot: string,
+  tsconfigInfo: TsconfigInfo,
   exportedSymbols: string[],
 ): Map<string, Set<string>> {
   const bySymbol = new Map<string, Set<string>>()
@@ -122,7 +128,7 @@ function findConsumerGroupsBySymbol(
     bySymbol.set(symbol, new Set<string>())
   }
 
-  const importers = findImporters(entrypointFile, sourceDir, sourceRoot, new Set(exportedSymbols))
+  const importers = findImporters(entrypointFile, sourceDir, tsconfigInfo, new Set(exportedSymbols))
   for (const importer of importers) {
     const consumerGroup = getConsumerGroup(importer.filePath, sourceDir)
     for (const symbol of importer.symbols) {
@@ -135,12 +141,12 @@ function findConsumerGroupsBySymbol(
 function findImporters(
   entrypointFile: string,
   sourceDir: string,
-  sourceRoot: string,
+  tsconfigInfo: TsconfigInfo,
   exportedSymbols: Set<string>,
 ): SymbolImporter[] {
   const options: ConsumerScanOptions = {
     entrypointFile,
-    sourceRoot,
+    tsconfigInfo,
     exportedSymbols,
     importers: [],
   }
@@ -162,18 +168,10 @@ function getSingleConsumerGroup(groups: Set<string>): string {
   return ` (group: ${single})`
 }
 
-function deriveProjectRoot(filename: string, sourceRoot: string): string | undefined {
-  const normalized = normalizePath(filename)
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  return normalized.slice(0, index)
-}
-
 interface SymbolAnalysisOptions {
   entrypointFile: string
   sourceDir: string
-  sourceRoot: string
+  tsconfigInfo: TsconfigInfo
 }
 
 // eslint-disable-next-line unslop/read-friendly-order
@@ -210,7 +208,7 @@ function scanFileEntry(filePath: string, options: ConsumerScanOptions): void {
   const symbols = getImportedSymbols(
     filePath,
     options.entrypointFile,
-    options.sourceRoot,
+    options.tsconfigInfo,
     options.exportedSymbols,
   )
   if (symbols.length === 0) return
@@ -224,7 +222,7 @@ function isSourceFile(filePath: string): boolean {
 function getImportedSymbols(
   filePath: string,
   entrypointFile: string,
-  sourceRoot: string,
+  tsconfigInfo: TsconfigInfo,
   exportedSymbols: Set<string>,
 ): string[] {
   let content: string
@@ -240,7 +238,7 @@ function getImportedSymbols(
   while ((match = matcher.exec(content)) !== null) {
     const clause = match[1]
     const specifier = match[2]
-    const resolvedTarget = resolveImportTarget(filePath, sourceRoot, specifier)
+    const resolvedTarget = resolveTarget(filePath, specifier, tsconfigInfo)
     if (!isSamePath(resolvedTarget, entrypointFile)) continue
     const names = extractNamedSymbols(clause)
     for (const name of names) {
@@ -249,6 +247,17 @@ function getImportedSymbols(
     }
   }
   return [...result]
+}
+
+function resolveTarget(
+  filePath: string,
+  specifier: string,
+  tsconfigInfo: TsconfigInfo,
+): string | undefined {
+  if (specifier.startsWith('.')) {
+    return resolveImportTarget(filePath, tsconfigInfo, specifier)
+  }
+  return resolvePathAlias(specifier, tsconfigInfo)
 }
 
 function isSamePath(value: string | undefined, expected: string): boolean {
@@ -289,7 +298,7 @@ interface SymbolImporter {
 
 interface ConsumerScanOptions {
   entrypointFile: string
-  sourceRoot: string
+  tsconfigInfo: TsconfigInfo
   exportedSymbols: Set<string>
   importers: SymbolImporter[]
 }

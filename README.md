@@ -23,7 +23,6 @@ export default [
   {
     settings: {
       unslop: {
-        sourceRoot: 'src',
         architecture: {
           utils: { shared: true },
           'repository/*': {
@@ -42,6 +41,10 @@ export default [
   },
 ]
 ```
+
+Architecture rules (`import-control`, `export-control`, `no-false-sharing`) require a reachable
+`tsconfig.json`. Set `compilerOptions.rootDir`, and if you use aliases, configure
+`compilerOptions.paths`.
 
 This turns on:
 
@@ -76,6 +79,8 @@ The rule reads from a shared policy in `settings.unslop.architecture`. It's deny
 - same-module relative imports can only go one level deeper - no tunnelling into internals
 - files that don't match any declared module are denied (fail-closed, not fail-silently)
 
+Alias imports are resolved via `compilerOptions.paths` from `tsconfig.json`.
+
 #### Configuration
 
 ```js
@@ -87,7 +92,6 @@ export default [
     plugins: { unslop },
     settings: {
       unslop: {
-        sourceRoot: 'src',
         architecture: {
           utils: { shared: true },
           'repository/*': {
@@ -136,7 +140,6 @@ export default [
   {
     settings: {
       unslop: {
-        sourceRoot: 'src',
         architecture: {
           utils: { shared: true },
           'shared/*': { shared: true },
@@ -149,7 +152,7 @@ export default [
 
 The rule takes no options - all configuration comes from the shared architecture settings, consistent with `import-control` and `export-control`.
 
-Consumer counting is always at the directory level: the importer file path relative to `sourceRoot`, minus filename. Both value imports and `import type` imports count as consumers, and alias imports such as `@/shared/index` are resolved the same as relative imports.
+Consumer counting is always at the directory level: the importer file path relative to the source root derived from `tsconfig.json`, minus filename. Both value imports and `import type` imports count as consumers, and alias imports configured in `compilerOptions.paths` are resolved the same as relative imports.
 
 #### What it catches
 

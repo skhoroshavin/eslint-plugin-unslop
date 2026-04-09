@@ -38,4 +38,7 @@ const full: Linter.Config = {
 plugin.configs!['minimal'] = minimal
 plugin.configs!['full'] = full
 
+export { getTsconfigInfo, resolvePathAlias } from './utils/index.js'
+export type { TsconfigInfo } from './utils/index.js'
+
 export default plugin

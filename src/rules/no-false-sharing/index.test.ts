@@ -6,12 +6,12 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 
 const TSCONFIG = {
   path: 'tsconfig.json',
-  content: '{"compilerOptions":{"strict":true},"include":["**/*.ts"]}',
+  content:
+    '{"compilerOptions":{"strict":true,"rootDir":"./src","baseUrl":".","paths":{"@/*":["src/*"]}},"include":["**/*.ts"]}',
 }
 
 const SHARED_SETTINGS = {
   unslop: {
-    sourceRoot: 'src',
     architecture: {
       'ui/components': { shared: true },
       'feature-a/*': { imports: [] },
@@ -117,9 +117,8 @@ scenario('type-only imports satisfy sharing threshold', rule, {
   code: 'export type ButtonProps = { label: string }',
 })
 
-scenario('missing sourceRoot in settings fails gracefully without reporting', rule, {
+scenario('missing tsconfig for linted file fails gracefully without reporting', rule, {
   files: [
-    TSCONFIG,
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
@@ -134,7 +133,7 @@ scenario('missing architecture settings fails gracefully without reporting', rul
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { sourceRoot: 'src' } },
+  settings: { unslop: {} },
   filename: 'src/ui/components/index.ts',
   code: 'export const Button = 1',
 })
