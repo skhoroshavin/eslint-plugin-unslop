@@ -40,10 +40,15 @@ function runInMemory(rule: Rule.RuleModule, options: ScenarioOptions): void {
 function runWithTempDir(rule: Rule.RuleModule, options: ScenarioOptions): void {
   const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-test-'))
   try {
+    const lintedFilePath = options.filename
     for (const file of options.files ?? []) {
       const full = node_path.join(dir, file.path)
       node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
-      node_fs.writeFileSync(full, file.content ?? '')
+      const content =
+        file.content === undefined && lintedFilePath === file.path
+          ? options.code
+          : (file.content ?? '')
+      node_fs.writeFileSync(full, content)
     }
     const filename =
       options.filename !== undefined ? node_path.join(dir, options.filename) : undefined
