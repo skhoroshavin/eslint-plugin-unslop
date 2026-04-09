@@ -40,24 +40,35 @@ function runInMemory(rule: Rule.RuleModule, options: ScenarioOptions): void {
 function runWithTempDir(rule: Rule.RuleModule, options: ScenarioOptions): void {
   const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-test-'))
   try {
-    const lintedFilePath = options.filename
-    for (const file of options.files ?? []) {
-      const full = node_path.join(dir, file.path)
-      node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
-      const content =
-        file.content === undefined && lintedFilePath === file.path
-          ? options.code
-          : (file.content ?? '')
-      node_fs.writeFileSync(full, content)
-    }
-    const filename =
-      options.filename !== undefined ? node_path.join(dir, options.filename) : undefined
-    const hasTsconfig = (options.files ?? []).some((f) => f.path === 'tsconfig.json')
+    writeScenarioFiles(dir, options)
+    const filename = getScenarioFilename(dir, options.filename)
+    const hasTsconfig = hasTsconfigFile(options.files)
     const tester = hasTsconfig ? makeFsTester(options, dir) : makeTester(options)
     runTester(tester, rule, options, filename)
   } finally {
     node_fs.rmSync(dir, { recursive: true, force: true })
   }
+}
+
+function writeScenarioFiles(dir: string, options: ScenarioOptions): void {
+  for (const file of options.files ?? []) {
+    const full = node_path.join(dir, file.path)
+    node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
+    node_fs.writeFileSync(full, getScenarioFileContent(file, options))
+  }
+}
+
+function getScenarioFileContent(file: ScenarioFile, options: ScenarioOptions): string {
+  if (file.content !== undefined) return file.content
+  return options.filename === file.path ? options.code : ''
+}
+
+function getScenarioFilename(dir: string, filename: string | undefined): string | undefined {
+  return filename !== undefined ? node_path.join(dir, filename) : undefined
+}
+
+function hasTsconfigFile(files: ScenarioFile[] | undefined): boolean {
+  return (files ?? []).some((file) => file.path === 'tsconfig.json')
 }
 
 function makeTester(options: ScenarioOptions): RuleTester {
