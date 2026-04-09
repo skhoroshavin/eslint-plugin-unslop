@@ -4,7 +4,7 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import type { ExportNamedDeclaration, Program } from 'estree'
+import type { ExportNamedDeclaration, ImportDeclaration, Program } from 'estree'
 
 import {
   getDeclarationNamesFromExport,
@@ -14,8 +14,6 @@ import {
   readArchitecturePolicy,
   resolveImportTarget,
 } from '../../utils/index.js'
-
-import type { TsconfigInfo } from '../../utils/tsconfig-resolution.js'
 
 export default {
   meta: {
@@ -54,6 +52,8 @@ export default {
           entrypointFile: filename,
           sourceDir,
           tsconfigInfo,
+          policy,
+          sharedModuleInstance: matched.instance,
         })
       },
     }
@@ -65,25 +65,20 @@ function reportUnsharedSymbols(
   node: Program,
   options: SymbolAnalysisOptions,
 ): void {
-  const exportedSymbols = collectExportedSymbols(node)
+  const exportedSymbols = collectExportedSymbols(node, options.entrypointFile, options.tsconfigInfo)
   if (exportedSymbols.length === 0) return
 
-  const consumerGroupsBySymbol = findConsumerGroupsBySymbol(
-    options.entrypointFile,
-    options.sourceDir,
-    options.tsconfigInfo,
-    exportedSymbols,
-  )
+  const consumerGroupsBySymbol = findConsumerGroupsBySymbol({ ...options, exportedSymbols })
 
   for (const symbol of exportedSymbols) {
-    const consumerGroups = consumerGroupsBySymbol.get(symbol)
+    const consumerGroups = consumerGroupsBySymbol.get(symbol.exportedName)
     if (consumerGroups !== undefined && consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
     const groups = consumerGroups ?? new Set<string>()
     context.report({
       node,
       messageId: 'notTrulyShared',
       data: {
-        symbol,
+        symbol: symbol.exportedName,
         consumerCount: String(groups.size),
         consumerGroup: getSingleConsumerGroup(groups),
       },
@@ -93,61 +88,160 @@ function reportUnsharedSymbols(
 
 const MIN_CONSUMER_GROUPS = 2
 
-function collectExportedSymbols(program: Program): string[] {
-  const symbols = new Set<string>()
+function collectExportedSymbols(
+  program: Program,
+  entrypointFile: string,
+  tsconfigInfo: TsconfigInfo,
+): ExportedSymbolTarget[] {
+  const importedTargets = collectImportedTargets(program, entrypointFile, tsconfigInfo)
+  const symbols = new Map<string, ExportedSymbolTarget>()
   for (const statement of program.body) {
     if (statement.type !== 'ExportNamedDeclaration') continue
-    addSymbolsFromExportNamed(statement, symbols)
+    addSymbolsFromExportNamed(statement, symbols, {
+      importedTargets,
+      entrypointFile,
+      tsconfigInfo,
+    })
   }
-  return [...symbols]
+  return [...symbols.values()]
 }
 
-function addSymbolsFromExportNamed(node: ExportNamedDeclaration, symbols: Set<string>): void {
+function collectImportedTargets(
+  program: Program,
+  entrypointFile: string,
+  tsconfigInfo: TsconfigInfo,
+): Map<string, string> {
+  const importedTargets = new Map<string, string>()
+  for (const statement of program.body) {
+    if (statement.type !== 'ImportDeclaration') continue
+    addImportedTargetsFromDeclaration(statement, importedTargets, entrypointFile, tsconfigInfo)
+  }
+  return importedTargets
+}
+
+function addImportedTargetsFromDeclaration(
+  node: ImportDeclaration,
+  importedTargets: Map<string, string>,
+  entrypointFile: string,
+  tsconfigInfo: TsconfigInfo,
+): void {
+  if (typeof node.source.value !== 'string') return
+  const target = resolveImportTarget(entrypointFile, tsconfigInfo, node.source.value)
+  if (target === undefined) return
+  for (const specifier of node.specifiers) {
+    if (specifier.type === 'ImportSpecifier' || specifier.type === 'ImportDefaultSpecifier') {
+      importedTargets.set(specifier.local.name, target)
+    }
+  }
+}
+
+function addSymbolsFromExportNamed(
+  node: ExportNamedDeclaration,
+  symbols: Map<string, ExportedSymbolTarget>,
+  options: ExportCollectionOptions,
+): void {
+  addSymbolsFromExportSpecifiers(node, symbols, options)
+  addSymbolsFromExportDeclaration(node, symbols, options)
+}
+
+function addSymbolsFromExportSpecifiers(
+  node: ExportNamedDeclaration,
+  symbols: Map<string, ExportedSymbolTarget>,
+  options: ExportCollectionOptions,
+): void {
+  const sourceTarget = getExportSourceTarget(node, options.entrypointFile, options.tsconfigInfo)
   for (const specifier of node.specifiers) {
     if (specifier.exported.type !== 'Identifier') continue
-    symbols.add(specifier.exported.name)
-  }
-  if (node.declaration === null || node.declaration === undefined) return
-  for (const name of getDeclarationNamesFromExport(node.declaration)) {
-    symbols.add(name)
+    if (specifier.local.type !== 'Identifier') continue
+    upsertExportedSymbol(symbols, specifier.exported.name, {
+      entrypointFile: options.entrypointFile,
+      backingFile:
+        sourceTarget ?? options.importedTargets.get(specifier.local.name) ?? options.entrypointFile,
+    })
   }
 }
 
-function findConsumerGroupsBySymbol(
+function addSymbolsFromExportDeclaration(
+  node: ExportNamedDeclaration,
+  symbols: Map<string, ExportedSymbolTarget>,
+  options: ExportCollectionOptions,
+): void {
+  if (node.declaration === null || node.declaration === undefined) return
+  for (const name of getDeclarationNamesFromExport(node.declaration)) {
+    upsertExportedSymbol(symbols, name, {
+      entrypointFile: options.entrypointFile,
+      backingFile: options.entrypointFile,
+    })
+  }
+}
+
+function getExportSourceTarget(
+  node: ExportNamedDeclaration,
   entrypointFile: string,
-  sourceDir: string,
   tsconfigInfo: TsconfigInfo,
-  exportedSymbols: string[],
-): Map<string, Set<string>> {
+): string | undefined {
+  if (node.source === null || node.source === undefined) return undefined
+  if (typeof node.source.value !== 'string') return undefined
+  return resolveImportTarget(entrypointFile, tsconfigInfo, node.source.value)
+}
+
+function upsertExportedSymbol(
+  symbols: Map<string, ExportedSymbolTarget>,
+  exportedName: string,
+  options: UpsertExportedSymbolOptions,
+): void {
+  const normalizedEntry = normalizePath(options.entrypointFile)
+  const normalizedBacking = normalizePath(options.backingFile)
+  const backingFile = normalizedBacking === normalizedEntry ? undefined : options.backingFile
+  const existing = symbols.get(exportedName)
+  if (existing === undefined) {
+    symbols.set(exportedName, {
+      exportedName,
+      entrypointFile: options.entrypointFile,
+      backingFile,
+    })
+    return
+  }
+  if (existing.backingFile === undefined && backingFile !== undefined) {
+    symbols.set(exportedName, { ...existing, backingFile })
+  }
+}
+
+function findConsumerGroupsBySymbol(options: ConsumerGroupOptions): Map<string, Set<string>> {
   const bySymbol = new Map<string, Set<string>>()
-  for (const symbol of exportedSymbols) {
-    bySymbol.set(symbol, new Set<string>())
+  for (const symbol of options.exportedSymbols) {
+    bySymbol.set(symbol.exportedName, new Set<string>())
   }
 
-  const importers = findImporters(entrypointFile, sourceDir, tsconfigInfo, new Set(exportedSymbols))
+  const importers = findImporters(options)
   for (const importer of importers) {
-    const consumerGroup = getConsumerGroup(importer.filePath, sourceDir)
-    for (const symbol of importer.symbols) {
-      bySymbol.get(symbol)?.add(consumerGroup)
+    const publicConsumerGroup = getConsumerGroup(importer.filePath, options.sourceDir)
+    for (const symbol of importer.publicSymbols) {
+      bySymbol.get(symbol)?.add(publicConsumerGroup)
+    }
+    for (const symbol of importer.internalSymbols) {
+      bySymbol.get(symbol)?.add(getInternalConsumerGroup(importer.internalModuleInstance))
     }
   }
   return bySymbol
 }
 
-function findImporters(
-  entrypointFile: string,
-  sourceDir: string,
-  tsconfigInfo: TsconfigInfo,
-  exportedSymbols: Set<string>,
-): SymbolImporter[] {
-  const options: ConsumerScanOptions = {
-    entrypointFile,
-    tsconfigInfo,
-    exportedSymbols,
+function findImporters(options: ImporterScanOptions): SymbolImporter[] {
+  const byName = new Map<string, ExportedSymbolTarget>()
+  for (const symbol of options.exportedSymbols) {
+    byName.set(symbol.exportedName, symbol)
+  }
+
+  const scanOptions: ConsumerScanOptions = {
+    entrypointFile: options.entrypointFile,
+    tsconfigInfo: options.tsconfigInfo,
+    policy: options.policy,
+    sharedModuleInstance: options.sharedModuleInstance,
+    exportedSymbolsByName: byName,
     importers: [],
   }
-  scanDir(sourceDir, options)
-  return options.importers
+  scanDir(options.sourceDir, scanOptions)
+  return scanOptions.importers
 }
 
 function getConsumerGroup(importerPath: string, sourceDir: string): string {
@@ -155,6 +249,10 @@ function getConsumerGroup(importerPath: string, sourceDir: string): string {
   const parts = rel.split('/')
   if (parts.length <= 1) return rel
   return parts.slice(0, -1).join('/')
+}
+
+function getInternalConsumerGroup(sharedModuleInstance: string): string {
+  return `internal:${sharedModuleInstance}`
 }
 
 function getSingleConsumerGroup(groups: Set<string>): string {
@@ -168,6 +266,19 @@ interface SymbolAnalysisOptions {
   entrypointFile: string
   sourceDir: string
   tsconfigInfo: TsconfigInfo
+  policy: RuleArchitecturePolicy
+  sharedModuleInstance: string
+}
+
+type RuleArchitecturePolicy = NonNullable<ReturnType<typeof readArchitecturePolicy>>
+type TsconfigInfo = RuleArchitecturePolicy['tsconfigInfo']
+
+interface ConsumerGroupOptions extends SymbolAnalysisOptions {
+  exportedSymbols: ExportedSymbolTarget[]
+}
+
+interface ImporterScanOptions extends SymbolAnalysisOptions {
+  exportedSymbols: ExportedSymbolTarget[]
 }
 
 // eslint-disable-next-line unslop/read-friendly-order
@@ -201,48 +312,81 @@ function scanFileEntry(filePath: string, options: ConsumerScanOptions): void {
   if (!isSourceFile(filePath)) return
   if (normalizePath(filePath) === normalizePath(options.entrypointFile)) return
 
-  const symbols = getImportedSymbols(
+  const moduleMatch = matchFileToArchitectureModule(filePath, options.policy)
+  const moduleInstance = moduleMatch?.instance
+  const isInternalConsumer = moduleInstance === options.sharedModuleInstance
+
+  const symbols = getImportedSymbols({
     filePath,
-    options.entrypointFile,
-    options.tsconfigInfo,
-    options.exportedSymbols,
-  )
-  if (symbols.length === 0) return
-  options.importers.push({ filePath, symbols })
+    entrypointFile: options.entrypointFile,
+    tsconfigInfo: options.tsconfigInfo,
+    exportedSymbolsByName: options.exportedSymbolsByName,
+    isInternalConsumer,
+  })
+  if (symbols.publicSymbols.length === 0 && symbols.internalSymbols.length === 0) return
+  options.importers.push({
+    filePath,
+    publicSymbols: symbols.publicSymbols,
+    internalSymbols: symbols.internalSymbols,
+    internalModuleInstance: options.sharedModuleInstance,
+  })
 }
 
 function isSourceFile(filePath: string): boolean {
   return /\.[jt]sx?$/.test(filePath)
 }
 
-function getImportedSymbols(
-  filePath: string,
-  entrypointFile: string,
-  tsconfigInfo: TsconfigInfo,
-  exportedSymbols: Set<string>,
-): string[] {
+function getImportedSymbols(options: ImportedSymbolOptions): ImportedSymbols {
   let content: string
   try {
-    content = node_fs.readFileSync(filePath, 'utf-8')
+    content = node_fs.readFileSync(options.filePath, 'utf-8')
   } catch {
-    return []
+    return { publicSymbols: [], internalSymbols: [] }
   }
 
-  const result = new Set<string>()
+  const publicSymbols = new Set<string>()
+  const internalSymbols = new Set<string>()
   const matcher = new RegExp(LOCAL_SOURCE_RE)
   let match: RegExpExecArray | null
   while ((match = matcher.exec(content)) !== null) {
     const clause = match[1]
     const specifier = match[2]
-    const resolvedTarget = resolveImportTarget(filePath, tsconfigInfo, specifier)
-    if (!isSamePath(resolvedTarget, entrypointFile)) continue
+    const resolvedTarget = resolveImportTarget(options.filePath, options.tsconfigInfo, specifier)
     const names = extractNamedSymbols(clause)
     for (const name of names) {
-      if (!exportedSymbols.has(name)) continue
-      result.add(name)
+      const exportedSymbol = options.exportedSymbolsByName.get(name)
+      if (exportedSymbol === undefined) continue
+      const kind = getConsumerKind(
+        resolvedTarget,
+        options.entrypointFile,
+        exportedSymbol,
+        options.isInternalConsumer,
+      )
+      if (kind === undefined) continue
+      if (kind === 'internal') {
+        internalSymbols.add(name)
+      } else {
+        publicSymbols.add(name)
+      }
     }
   }
-  return [...result]
+  return {
+    publicSymbols: [...publicSymbols],
+    internalSymbols: [...internalSymbols],
+  }
+}
+
+function getConsumerKind(
+  resolvedTarget: string | undefined,
+  entrypointFile: string,
+  exportedSymbol: ExportedSymbolTarget,
+  isInternalConsumer: boolean,
+): ConsumerKind | undefined {
+  if (isSamePath(resolvedTarget, entrypointFile)) {
+    return isInternalConsumer ? 'internal' : 'public'
+  }
+  if (!isInternalConsumer || exportedSymbol.backingFile === undefined) return undefined
+  return isSamePath(resolvedTarget, exportedSymbol.backingFile) ? 'internal' : undefined
 }
 
 function isSamePath(value: string | undefined, expected: string): boolean {
@@ -278,12 +422,48 @@ function parseNamedSymbol(raw: string): string | undefined {
 
 interface SymbolImporter {
   filePath: string
-  symbols: string[]
+  publicSymbols: string[]
+  internalSymbols: string[]
+  internalModuleInstance: string
 }
 
 interface ConsumerScanOptions {
   entrypointFile: string
   tsconfigInfo: TsconfigInfo
-  exportedSymbols: Set<string>
+  policy: RuleArchitecturePolicy
+  sharedModuleInstance: string
+  exportedSymbolsByName: Map<string, ExportedSymbolTarget>
   importers: SymbolImporter[]
+}
+
+interface ImportedSymbols {
+  publicSymbols: string[]
+  internalSymbols: string[]
+}
+
+interface ImportedSymbolOptions {
+  filePath: string
+  entrypointFile: string
+  tsconfigInfo: TsconfigInfo
+  exportedSymbolsByName: Map<string, ExportedSymbolTarget>
+  isInternalConsumer: boolean
+}
+
+type ConsumerKind = 'internal' | 'public'
+
+interface ExportedSymbolTarget {
+  exportedName: string
+  entrypointFile: string
+  backingFile?: string
+}
+
+interface ExportCollectionOptions {
+  importedTargets: Map<string, string>
+  entrypointFile: string
+  tsconfigInfo: TsconfigInfo
+}
+
+interface UpsertExportedSymbolOptions {
+  entrypointFile: string
+  backingFile: string
 }
