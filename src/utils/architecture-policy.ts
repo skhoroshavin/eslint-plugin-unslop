@@ -1,21 +1,28 @@
-import node_fs from 'node:fs'
-
 import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
+
+import { getTsconfigInfo, resolveExistingFile, resolvePathAlias } from './tsconfig-resolution.js'
+
+import type { TsconfigInfo } from './tsconfig-resolution.js'
 
 export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
   const unslopSettings = getUnslopSettings(context.settings)
   if (unslopSettings === undefined) return undefined
 
-  const sourceRoot = getSourceRoot(unslopSettings)
   const architecture = getArchitectureSettings(unslopSettings)
   if (architecture === undefined) return undefined
 
   const modules = parseArchitectureModules(architecture)
   if (modules.length === 0) return undefined
 
-  return { sourceRoot, modules }
+  const tsconfigInfo = getTsconfigInfo(context.filename)
+  if (tsconfigInfo === undefined) {
+    warnMissingTsconfig(context.filename)
+    return undefined
+  }
+
+  return { tsconfigInfo, modules }
 }
 
 function getUnslopSettings(settings: unknown): Record<string, unknown> | undefined {
@@ -23,12 +30,6 @@ function getUnslopSettings(settings: unknown): Record<string, unknown> | undefin
   const unslop = settings.unslop
   if (!isRecord(unslop)) return undefined
   return unslop
-}
-
-function getSourceRoot(unslopSettings: Record<string, unknown>): string | undefined {
-  if (typeof unslopSettings.sourceRoot !== 'string') return undefined
-  const trimmed = trimSlashes(unslopSettings.sourceRoot)
-  return trimmed.length > 0 ? trimmed : undefined
 }
 
 function getArchitectureSettings(
@@ -87,7 +88,7 @@ export function matchFileToArchitectureModule(
   policy: ArchitecturePolicy,
 ): MatchedArchitectureModule | undefined {
   const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.sourceRoot)
+  const candidatePath = applySourceRoot(normalized, policy.tsconfigInfo)
   if (candidatePath === undefined) return undefined
   const segments = splitPathSegments(candidatePath)
   const matches = collectModuleMatches(segments, policy.modules)
@@ -107,16 +108,21 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
 }
 
 interface ArchitecturePolicy {
-  sourceRoot?: string
+  tsconfigInfo: TsconfigInfo
   modules: ArchitectureModuleDefinition[]
 }
 
-function applySourceRoot(pathValue: string, sourceRoot?: string): string | undefined {
-  if (sourceRoot === undefined) return pathValue
-  const withSlashes = `/${sourceRoot}/`
-  const index = pathValue.indexOf(withSlashes)
-  if (index === -1) return undefined
-  return pathValue.slice(index + withSlashes.length)
+function applySourceRoot(pathValue: string, tsconfigInfo: TsconfigInfo): string | undefined {
+  const projectRelative = normalizePath(node_path.relative(tsconfigInfo.projectRoot, pathValue))
+  if (isOutsideProject(projectRelative)) return undefined
+
+  const sourceRoot = tsconfigInfo.sourceRoot
+  if (sourceRoot === undefined) return projectRelative
+
+  const absoluteSourceRoot = node_path.resolve(tsconfigInfo.projectRoot, sourceRoot)
+  const sourceRelative = normalizePath(node_path.relative(absoluteSourceRoot, pathValue))
+  if (isOutsideProject(sourceRelative)) return undefined
+  return sourceRelative
 }
 
 function collectModuleMatches(
@@ -211,95 +217,18 @@ function countWildcards(value: string): number {
 
 export function resolveImportTarget(
   importerFile: string,
-  sourceRoot: string | undefined,
+  tsconfigInfo: TsconfigInfo,
   specifier: string,
 ): string | undefined {
-  if (!isLocalSpecifier(specifier)) return undefined
+  if (!specifier.startsWith('.')) return resolvePathAlias(specifier, tsconfigInfo)
   const importerDir = node_path.dirname(importerFile)
-  if (specifier.startsWith('@/')) {
-    return resolveAliasImport(importerFile, sourceRoot, specifier)
-  }
   const base = node_path.resolve(importerDir, specifier)
-  return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
-}
-
-function isLocalSpecifier(specifier: string): boolean {
-  return specifier.startsWith('.') || specifier.startsWith('@/')
-}
-
-function resolveAliasImport(
-  importerFile: string,
-  sourceRoot: string | undefined,
-  specifier: string,
-): string | undefined {
-  if (sourceRoot === undefined) return undefined
-  const normalized = normalizePath(importerFile)
-  const marker = `/${sourceRoot}/`
-  const index = normalized.indexOf(marker)
-  if (index === -1) return undefined
-  const projectRoot = normalized.slice(0, index)
-  const remainder = specifier.slice(2)
-  const base = node_path.join(projectRoot, sourceRoot, remainder)
-  return resolveInsideSourceRoot(resolveExistingFile(base), sourceRoot)
-}
-
-function resolveInsideSourceRoot(
-  filePath: string | undefined,
-  sourceRoot: string | undefined,
-): string | undefined {
-  if (filePath === undefined) return undefined
-  if (sourceRoot === undefined) return filePath
-  const normalized = normalizePath(filePath)
-  const marker = `/${sourceRoot}/`
-  return normalized.includes(marker) ? filePath : undefined
+  return resolveExistingFile(base)
 }
 
 export function normalizePath(pathValue: string): string {
   return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
 }
-
-function resolveExistingFile(basePath: string): string | undefined {
-  const candidates = buildCandidates(basePath)
-  for (const candidate of candidates) {
-    const resolved = resolveCandidate(candidate)
-    if (resolved !== undefined) return resolved
-  }
-  return undefined
-}
-
-function resolveCandidate(candidate: string): string | undefined {
-  if (!node_fs.existsSync(candidate)) return undefined
-  const stat = node_fs.statSync(candidate)
-  if (stat.isFile()) return candidate
-  if (!stat.isDirectory()) return undefined
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    const indexPath = node_path.join(candidate, `index${extension}`)
-    if (!node_fs.existsSync(indexPath)) continue
-    const indexStat = node_fs.statSync(indexPath)
-    if (indexStat.isFile()) return indexPath
-  }
-  return undefined
-}
-
-function buildCandidates(basePath: string): string[] {
-  const candidates: string[] = []
-  for (const extension of FILE_EXTENSIONS) {
-    candidates.push(basePath + extension)
-  }
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    candidates.push(node_path.join(basePath, `index${extension}`))
-  }
-  for (const extension of JS_IMPORT_EXTENSIONS) {
-    if (!basePath.endsWith(extension)) continue
-    const tsExtension = extension === '.jsx' ? '.tsx' : '.ts'
-    candidates.push(basePath.slice(0, -extension.length) + tsExtension)
-  }
-  return candidates
-}
-
-const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
-
-const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 
 export function isPublicEntrypoint(filePath: string): boolean {
   return ENTRYPOINT_FILES.has(node_path.basename(filePath))
@@ -325,3 +254,17 @@ interface ArchitectureModulePolicy {
 function trimSlashes(value: string): string {
   return value.replace(/^\/+|\/+$/g, '')
 }
+
+function isOutsideProject(pathValue: string): boolean {
+  return pathValue === '..' || pathValue.startsWith('../') || node_path.isAbsolute(pathValue)
+}
+
+function warnMissingTsconfig(filename: string): void {
+  if (warnedMissingTsconfigForFiles.has(filename)) return
+  warnedMissingTsconfigForFiles.add(filename)
+  console.warn(
+    `[eslint-plugin-unslop] No tsconfig.json found for ${filename}. Architecture rules are disabled for this file.`,
+  )
+}
+
+const warnedMissingTsconfigForFiles = new Set<string>()

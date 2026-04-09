@@ -14,7 +14,6 @@ export default [
     files: ['**/*.{js,mjs,cjs,ts}'],
     settings: {
       unslop: {
-        sourceRoot: 'src',
         architecture: {
           utils: { shared: true },
           'rules/*': {

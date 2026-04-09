@@ -6,12 +6,12 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 
 const TSCONFIG = {
   path: 'tsconfig.json',
-  content: '{"compilerOptions":{"strict":true},"include":["**/*.ts"]}',
+  content:
+    '{"compilerOptions":{"strict":true,"rootDir":"./src","baseUrl":".","paths":{"@/*":["src/*"]}},"include":["**/*.ts"]}',
 }
 
 const SHARED_SETTINGS = {
   unslop: {
-    sourceRoot: 'src',
     architecture: {
       'ui/components': { shared: true },
       'feature-a/*': { imports: [] },
@@ -117,9 +117,107 @@ scenario('type-only imports satisfy sharing threshold', rule, {
   code: 'export type ButtonProps = { label: string }',
 })
 
-scenario('missing sourceRoot in settings fails gracefully without reporting', rule, {
+scenario('direct entrypoint export counts internal shared consumers', rule, {
   files: [
     TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: 'export const Badge = 1' },
+    {
+      path: 'src/ui/components/local-consumer.ts',
+      content: "import { Badge } from '@/ui/components'\nvoid Badge",
+    },
+    { path: 'src/feature-a/screen.ts', content: "import { Badge } from '@/ui/components'" },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Badge = 1',
+})
+
+scenario('re-exported symbol counts internal backing-file consumers', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: "export { helper } from './helper'" },
+    { path: 'src/ui/components/helper.ts', content: 'export const helper = 1' },
+    {
+      path: 'src/ui/components/local-consumer.ts',
+      content: "import { helper } from './helper'\nvoid helper",
+    },
+    { path: 'src/feature-a/screen.ts', content: "import { helper } from '@/ui/components'" },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: "export { helper } from './helper'",
+})
+
+scenario('multiple internal consumers collapse to one shared-module group', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: "export { sharedThing } from './shared-thing'" },
+    { path: 'src/ui/components/shared-thing.ts', content: 'export const sharedThing = 1' },
+    {
+      path: 'src/ui/components/local-a.ts',
+      content: "import { sharedThing } from './shared-thing'\nvoid sharedThing",
+    },
+    {
+      path: 'src/ui/components/local-b.ts',
+      content: "import { sharedThing } from '@/ui/components'\nvoid sharedThing",
+    },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: "export { sharedThing } from './shared-thing'",
+  errors: [
+    {
+      message:
+        'symbol "sharedThing" has 1 consumer group(s) (group: internal:ui/components) -> Must be used by 2+ entities',
+    },
+  ],
+})
+
+scenario('internal-only consumer group remains insufficient', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: "export { localOnly } from './local-only'" },
+    { path: 'src/ui/components/local-only.ts', content: 'export const localOnly = 1' },
+    {
+      path: 'src/ui/components/local-consumer.ts',
+      content: "import { localOnly } from './local-only'\nvoid localOnly",
+    },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: "export { localOnly } from './local-only'",
+  errors: [
+    {
+      message:
+        'symbol "localOnly" has 1 consumer group(s) (group: internal:ui/components) -> Must be used by 2+ entities',
+    },
+  ],
+})
+
+scenario('external deep imports of backing files do not satisfy sharing', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/index.ts', content: "export { deepOnly } from './deep-only'" },
+    { path: 'src/ui/components/deep-only.ts', content: 'export const deepOnly = 1' },
+    {
+      path: 'src/feature-a/screen.ts',
+      content: "import { deepOnly } from '@/ui/components/deep-only'\nvoid deepOnly",
+    },
+    { path: 'src/feature-b/screen.ts', content: "import { deepOnly } from '@/ui/components'" },
+  ],
+  settings: SHARED_SETTINGS,
+  filename: 'src/ui/components/index.ts',
+  code: "export { deepOnly } from './deep-only'",
+  errors: [
+    {
+      message:
+        'symbol "deepOnly" has 1 consumer group(s) (group: feature-b) -> Must be used by 2+ entities',
+    },
+  ],
+})
+
+scenario('missing tsconfig for linted file fails gracefully without reporting', rule, {
+  files: [
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
@@ -134,7 +232,7 @@ scenario('missing architecture settings fails gracefully without reporting', rul
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { sourceRoot: 'src' } },
+  settings: { unslop: {} },
   filename: 'src/ui/components/index.ts',
   code: 'export const Button = 1',
 })

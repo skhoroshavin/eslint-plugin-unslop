@@ -3,11 +3,24 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 
 // spec: architecture-import-export-control/spec.md
 
+const TSCONFIG_WITH_ROOT_DIR = {
+  path: 'tsconfig.json',
+  content: '{"compilerOptions":{"rootDir":"./src"}}',
+}
+
+const TSCONFIG_WITH_ALIAS = {
+  path: 'tsconfig.json',
+  content: '{"compilerOptions":{"rootDir":"./src","baseUrl":".","paths":{"@/*":["src/*"]}}}',
+}
+
 scenario('cross-module import declared in the allowlist is allowed', rule, {
-  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -19,10 +32,13 @@ scenario('cross-module import declared in the allowlist is allowed', rule, {
 })
 
 scenario('cross-module alias import to entrypoint declared in the allowlist is allowed', rule, {
-  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ALIAS,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -34,10 +50,13 @@ scenario('cross-module alias import to entrypoint declared in the allowlist is a
 })
 
 scenario('cross-module import not declared in the allowlist is reported', rule, {
-  files: [{ path: 'src/repository/user/index.ts' }, { path: 'src/models/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/index.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -50,10 +69,13 @@ scenario('cross-module import not declared in the allowlist is reported', rule, 
 })
 
 scenario('cross-module import targeting an internal non-entrypoint file is reported', rule, {
-  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/internal.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/internal.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -66,10 +88,13 @@ scenario('cross-module import targeting an internal non-entrypoint file is repor
 })
 
 scenario('local cross-module namespace import is rejected', rule, {
-  files: [{ path: 'src/repository/user/service.ts' }, { path: 'src/models/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -82,10 +107,9 @@ scenario('local cross-module namespace import is rejected', rule, {
 })
 
 scenario('external dependency namespace import is allowed', rule, {
-  files: [{ path: 'src/repository/user/service.ts' }],
+  files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/repository/user/service.ts' }],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
       },
@@ -99,10 +123,9 @@ scenario(
   'shallow relative import to a direct child module entrypoint is implicitly allowed',
   rule,
   {
-    files: [{ path: 'src/index.ts' }, { path: 'src/rules/index.ts' }],
+    files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/index.ts' }],
     settings: {
       unslop: {
-        sourceRoot: 'src',
         architecture: {
           'index.ts': { imports: [] },
           'rules/index.ts': { imports: [] },
@@ -115,10 +138,9 @@ scenario(
 )
 
 scenario('shallow relative import to a direct child non-entrypoint is reported', rule, {
-  files: [{ path: 'src/index.ts' }, { path: 'src/rules/internal.ts' }],
+  files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/internal.ts' }],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'index.ts': { imports: [] },
         rules: { imports: [] },
@@ -132,12 +154,12 @@ scenario('shallow relative import to a direct child non-entrypoint is reported',
 
 scenario('same-module relative import one level deep is allowed', rule, {
   files: [
+    TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/index.ts' },
     { path: 'src/repository/user/helpers/index.ts' },
   ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -150,12 +172,12 @@ scenario('same-module relative import one level deep is allowed', rule, {
 
 scenario('same-module relative import two levels deep is reported', rule, {
   files: [
+    TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/index.ts' },
     { path: 'src/repository/user/helpers/internal/index.ts' },
   ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -169,12 +191,12 @@ scenario('same-module relative import two levels deep is reported', rule, {
 
 scenario('same-module alias import two levels deep is reported', rule, {
   files: [
+    TSCONFIG_WITH_ALIAS,
     { path: 'src/repository/user/index.ts' },
     { path: 'src/repository/user/helpers/internal/index.ts' },
   ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: ['models/*'] },
         'models/*': { imports: [] },
@@ -187,19 +209,26 @@ scenario('same-module alias import two levels deep is reported', rule, {
 })
 
 scenario('missing architecture settings fails gracefully without reporting', rule, {
-  files: [{ path: 'src/models/user/index.ts' }, { path: 'src/repository/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/models/user/index.ts' },
+    { path: 'src/repository/user/index.ts' },
+  ],
   settings: {
-    unslop: { sourceRoot: 'src' },
+    unslop: {},
   },
   filename: 'src/models/user/index.ts',
   code: "import { createUserRepo } from '../../repository/user/index.ts'",
 })
 
 scenario('exact module matcher takes precedence over wildcard matcher', rule, {
-  files: [{ path: 'src/repository/special/index.ts' }, { path: 'src/models/user/index.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/special/index.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
   settings: {
     unslop: {
-      sourceRoot: 'src',
       architecture: {
         'repository/*': { imports: [] },
         'repository/special': { imports: ['models/*'] },
