@@ -220,20 +220,10 @@ export function resolveImportTarget(
   tsconfigInfo: TsconfigInfo,
   specifier: string,
 ): string | undefined {
-  if (!isLocalSpecifier(specifier, tsconfigInfo.pathsMatcher)) return undefined
-  const importerDir = node_path.dirname(importerFile)
   if (!specifier.startsWith('.')) return resolvePathAlias(specifier, tsconfigInfo)
+  const importerDir = node_path.dirname(importerFile)
   const base = node_path.resolve(importerDir, specifier)
   return resolveExistingFile(base)
-}
-
-function isLocalSpecifier(
-  specifier: string,
-  pathsMatcher: ((specifier: string) => string[]) | null,
-): boolean {
-  if (specifier.startsWith('.')) return true
-  if (pathsMatcher === null) return false
-  return pathsMatcher(specifier).length > 0
 }
 
 export function normalizePath(pathValue: string): string {

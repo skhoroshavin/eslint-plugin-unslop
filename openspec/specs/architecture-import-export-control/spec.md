@@ -2,7 +2,7 @@
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings
 
-The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, and `shared`. A module with `shared: true` is subject to false-sharing enforcement by `unslop/no-false-sharing`.
+The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, and `shared`. A module with `shared: true` is subject to false-sharing enforcement by `unslop/no-false-sharing`. The `settings.unslop.sourceRoot` setting is removed; source root is derived from `tsconfig.json`.
 
 #### Scenario: Architecture settings are present
 
@@ -21,27 +21,13 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 #### Scenario: Alias import counts as a symbol consumer
 
-- **WHEN** a symbol exported from a shared module entrypoint is imported through an alias path under `sourceRoot` (for example `@/ui/components`, `@/ui/components/index`, `@/utils/index.js`)
+- **WHEN** a symbol exported from a shared module entrypoint is imported through any alias path configured in `compilerOptions.paths` (for example `@/ui/components`, `~/utils/index`, `@components/Button`)
 - **THEN** `unslop/no-false-sharing` MUST count that import as a local consumer of the resolved exported symbol
 
 #### Scenario: Module not marked shared is exempt from false-sharing enforcement
 
 - **WHEN** a module policy does not include `shared: true`
 - **THEN** `unslop/no-false-sharing` MUST NOT report errors for files within that module
-
-### Requirement: no-false-sharing SHALL derive project root from sourceRoot path
-
-`unslop/no-false-sharing` MUST derive the project root by locating the `sourceRoot` segment in the absolute filename path and taking the prefix before it. This is consistent with how `import-control` and `export-control` resolve paths.
-
-#### Scenario: sourceRoot present in filename
-
-- **WHEN** `settings.unslop.sourceRoot` is set and the filename contains `/<sourceRoot>/`
-- **THEN** `no-false-sharing` MUST derive the project root as everything before `/<sourceRoot>/` in the filename
-
-#### Scenario: sourceRoot absent
-
-- **WHEN** `settings.unslop.sourceRoot` is not set
-- **THEN** `no-false-sharing` MUST fail gracefully and not report errors for the file
 
 ### Requirement: no-false-sharing SHALL take no rule-level options
 
@@ -110,7 +96,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 #### Scenario: Cross-module alias import targets entrypoint via explicit policy
 
-- **WHEN** a cross-module import uses a source-root alias path and resolves to `index.ts` or `types.ts`, and the importer module policy explicitly allows the target module in `imports`
+- **WHEN** a cross-module import uses any tsconfig-configured alias path and resolves to `index.ts` or `types.ts`, and the importer module policy explicitly allows the target module in `imports`
 - **THEN** `unslop/import-control` MUST allow the import
 
 #### Scenario: Cross-module import targets internal file
@@ -134,7 +120,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
 
-`unslop/import-control` MUST enforce same-module depth limits for local imports based on resolved target identity, regardless of whether the import uses `./` relative syntax or source-root alias syntax.
+`unslop/import-control` MUST enforce same-module depth limits for local imports based on resolved target identity, regardless of whether the import uses `./` relative syntax or any tsconfig-configured alias syntax.
 
 #### Scenario: Same-module shallow relative import is allowed
 
@@ -148,7 +134,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 #### Scenario: Same-module deep alias import is rejected
 
-- **WHEN** a same-module source-root alias import resolves to a path that reaches two or more levels deeper in the same module instance
+- **WHEN** a same-module import using any tsconfig-configured alias resolves to a path that reaches two or more levels deeper in the same module instance
 - **THEN** `unslop/import-control` MUST report an error
 
 ### Requirement: Export control SHALL forbid export-all declarations

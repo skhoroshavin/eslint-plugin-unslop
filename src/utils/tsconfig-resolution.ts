@@ -12,12 +12,10 @@ export function getTsconfigInfo(filename: string): TsconfigInfo | undefined {
   if (tsconfig === null) return undefined
 
   const cached = tsconfigInfoCache.get(tsconfig.path)
-  if (cached !== undefined) {
-    return cached === null ? undefined : cached
-  }
+  if (cached !== undefined) return cached
 
   const info = parseTsconfigInfo(tsconfig)
-  tsconfigInfoCache.set(tsconfig.path, info ?? null)
+  tsconfigInfoCache.set(tsconfig.path, info)
   return info
 }
 
@@ -141,7 +139,7 @@ function trimSlashes(value: string): string {
 }
 
 function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
+  return pathValue.replace(/\\/g, '/')
 }
 
 function isOutsideProject(relativePath: string): boolean {
@@ -152,4 +150,4 @@ function isOutsideProject(relativePath: string): boolean {
 
 const tsconfigSearchCache: Cache = new Map()
 
-const tsconfigInfoCache = new Map<string, TsconfigInfo | null>()
+const tsconfigInfoCache = new Map<string, TsconfigInfo>()

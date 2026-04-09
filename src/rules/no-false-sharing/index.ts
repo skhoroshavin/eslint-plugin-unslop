@@ -7,17 +7,15 @@ import type { Rule } from 'eslint'
 import type { ExportNamedDeclaration, Program } from 'estree'
 
 import {
-  getTsconfigInfo,
   getDeclarationNamesFromExport,
   isPublicEntrypoint,
   matchFileToArchitectureModule,
   normalizePath,
   readArchitecturePolicy,
-  resolvePathAlias,
   resolveImportTarget,
 } from '../../utils/index.js'
 
-import type { TsconfigInfo } from '../../utils/index.js'
+import type { TsconfigInfo } from '../../utils/tsconfig-resolution.js'
 
 export default {
   meta: {
@@ -39,13 +37,11 @@ export default {
     const policy = readArchitecturePolicy(context)
     if (policy === undefined) return {}
 
-    const tsconfigInfo = getTsconfigInfo(filename)
-    if (tsconfigInfo === undefined) return {}
-
     const matched = matchFileToArchitectureModule(filename, policy)
     if (matched === undefined || !matched.policy.shared) return {}
     if (!isPublicEntrypoint(filename)) return {}
 
+    const tsconfigInfo = policy.tsconfigInfo
     const sourceRoot = tsconfigInfo.sourceRoot
     if (sourceRoot === undefined) return {}
 
@@ -238,7 +234,7 @@ function getImportedSymbols(
   while ((match = matcher.exec(content)) !== null) {
     const clause = match[1]
     const specifier = match[2]
-    const resolvedTarget = resolveTarget(filePath, specifier, tsconfigInfo)
+    const resolvedTarget = resolveImportTarget(filePath, tsconfigInfo, specifier)
     if (!isSamePath(resolvedTarget, entrypointFile)) continue
     const names = extractNamedSymbols(clause)
     for (const name of names) {
@@ -247,17 +243,6 @@ function getImportedSymbols(
     }
   }
   return [...result]
-}
-
-function resolveTarget(
-  filePath: string,
-  specifier: string,
-  tsconfigInfo: TsconfigInfo,
-): string | undefined {
-  if (specifier.startsWith('.')) {
-    return resolveImportTarget(filePath, tsconfigInfo, specifier)
-  }
-  return resolvePathAlias(specifier, tsconfigInfo)
 }
 
 function isSamePath(value: string | undefined, expected: string): boolean {
