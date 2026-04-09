@@ -221,6 +221,28 @@ scenario('missing architecture settings fails gracefully without reporting', rul
   code: "import { createUserRepo } from '../../repository/user/index.ts'",
 })
 
+scenario('semantic project setup failure fails open without reporting', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/outside/tsconfig.json',
+      content: '{',
+    },
+    { path: 'src/outside/repository/user/index.ts' },
+    { path: 'src/outside/models/user/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/outside/models/user/index.ts',
+  code: "import { createUserRepo } from '../../repository/user/index.ts'",
+})
+
 scenario('exact module matcher takes precedence over wildcard matcher', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,

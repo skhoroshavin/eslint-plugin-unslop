@@ -2,9 +2,13 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import { getTsconfigInfo, resolveExistingFile, resolvePathAlias } from './tsconfig-resolution.js'
+import {
+  getProjectContext,
+  isFileInProject,
+  resolveImportTarget as resolveProjectImportTarget,
+} from './tsconfig-resolution.js'
 
-import type { TsconfigInfo } from './tsconfig-resolution.js'
+import type { ProjectContext } from './tsconfig-resolution.js'
 
 export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
   const unslopSettings = getUnslopSettings(context.settings)
@@ -16,13 +20,15 @@ export function readArchitecturePolicy(context: Rule.RuleContext): ArchitectureP
   const modules = parseArchitectureModules(architecture)
   if (modules.length === 0) return undefined
 
-  const tsconfigInfo = getTsconfigInfo(context.filename)
-  if (tsconfigInfo === undefined) {
+  const projectContext = getProjectContext(context.filename)
+  if (projectContext === undefined) {
     warnMissingTsconfig(context.filename)
     return undefined
   }
 
-  return { tsconfigInfo, modules }
+  if (!isFileInProject(context.filename, projectContext)) return undefined
+
+  return { projectContext, modules }
 }
 
 function getUnslopSettings(settings: unknown): Record<string, unknown> | undefined {
@@ -88,7 +94,7 @@ export function matchFileToArchitectureModule(
   policy: ArchitecturePolicy,
 ): MatchedArchitectureModule | undefined {
   const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.tsconfigInfo)
+  const candidatePath = applySourceRoot(normalized, policy.projectContext)
   if (candidatePath === undefined) return undefined
   const segments = splitPathSegments(candidatePath)
   const matches = collectModuleMatches(segments, policy.modules)
@@ -108,18 +114,18 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
 }
 
 interface ArchitecturePolicy {
-  tsconfigInfo: TsconfigInfo
+  projectContext: ProjectContext
   modules: ArchitectureModuleDefinition[]
 }
 
-function applySourceRoot(pathValue: string, tsconfigInfo: TsconfigInfo): string | undefined {
-  const projectRelative = normalizePath(node_path.relative(tsconfigInfo.projectRoot, pathValue))
+function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
+  const projectRelative = normalizePath(node_path.relative(projectContext.projectRoot, pathValue))
   if (isOutsideProject(projectRelative)) return undefined
 
-  const sourceRoot = tsconfigInfo.sourceRoot
+  const sourceRoot = projectContext.sourceRoot
   if (sourceRoot === undefined) return projectRelative
 
-  const absoluteSourceRoot = node_path.resolve(tsconfigInfo.projectRoot, sourceRoot)
+  const absoluteSourceRoot = node_path.resolve(projectContext.projectRoot, sourceRoot)
   const sourceRelative = normalizePath(node_path.relative(absoluteSourceRoot, pathValue))
   if (isOutsideProject(sourceRelative)) return undefined
   return sourceRelative
@@ -217,13 +223,10 @@ function countWildcards(value: string): number {
 
 export function resolveImportTarget(
   importerFile: string,
-  tsconfigInfo: TsconfigInfo,
+  projectContext: ProjectContext,
   specifier: string,
 ): string | undefined {
-  if (!specifier.startsWith('.')) return resolvePathAlias(specifier, tsconfigInfo)
-  const importerDir = node_path.dirname(importerFile)
-  const base = node_path.resolve(importerDir, specifier)
-  return resolveExistingFile(base)
+  return resolveProjectImportTarget(importerFile, projectContext, specifier)
 }
 
 export function normalizePath(pathValue: string): string {
@@ -263,7 +266,7 @@ function warnMissingTsconfig(filename: string): void {
   if (warnedMissingTsconfigForFiles.has(filename)) return
   warnedMissingTsconfigForFiles.add(filename)
   console.warn(
-    `[eslint-plugin-unslop] No tsconfig.json found for ${filename}. Architecture rules are disabled for this file.`,
+    `[eslint-plugin-unslop] No usable TypeScript project context found for ${filename}. Architecture rules are disabled for this file.`,
   )
 }
 

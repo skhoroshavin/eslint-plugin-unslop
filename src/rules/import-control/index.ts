@@ -61,7 +61,7 @@ function checkDeclaration(
   const importer = getImporter(filename, policy)
   if (importer === undefined) return
 
-  const resolvedTarget = resolveImportTarget(filename, policy.tsconfigInfo, specifier)
+  const resolvedTarget = resolveImportTarget(filename, policy.projectContext, specifier)
   if (resolvedTarget === undefined) return
   const targetFile = normalizePath(resolvedTarget)
 
