@@ -148,10 +148,10 @@ function isInsideProject(projectRoot: string, absolutePath: string): boolean {
 }
 
 function trimSlashes(value: string): string {
-  return value.replace(/^\/+/g, '').replace(/\/+$/g, '')
+  return value.replace(/^\/+|\/+$/g, '')
 }
 
-function normalizePath(pathValue: string): string {
+export function normalizePath(pathValue: string): string {
   return pathValue.replace(/\\/g, '/')
 }
 

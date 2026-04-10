@@ -58,14 +58,14 @@ function checkDeclaration(
   const specifier = getSpecifier(node)
   if (specifier === undefined) return
 
-  const importer = getImporter(filename, policy)
+  const importer = matchFileToArchitectureModule(filename, policy)
   if (importer === undefined) return
 
   const resolvedTarget = resolveImportTarget(filename, policy.projectContext, specifier)
   if (resolvedTarget === undefined) return
   const targetFile = normalizePath(resolvedTarget)
 
-  const importee = getImportee(targetFile, policy)
+  const importee = matchFileToArchitectureModule(targetFile, policy)
   if (importee === undefined) return
 
   checkModuleEdge({
@@ -85,20 +85,6 @@ function getSpecifier(
   const source = node.source
   if (source === undefined || source === null) return undefined
   return typeof source.value === 'string' ? source.value : undefined
-}
-
-function getImporter(
-  filename: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(filename, policy)
-}
-
-function getImportee(
-  targetFile: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(targetFile, policy)
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {

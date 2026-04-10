@@ -41,7 +41,7 @@ export default {
 
     return {
       ExportNamedDeclaration(node) {
-        checkNamedExport(context, node, state?.patterns, state?.shouldForbidExportAll ?? true)
+        checkNamedExport(context, node, state?.patterns)
       },
       ExportAllDeclaration(node) {
         // Always reject export * from ... in all files per spec
@@ -64,14 +64,13 @@ function buildRuleState(context: Rule.RuleContext, filename: string): RuleState 
   if (moduleMatch === undefined) return undefined
 
   const hasExportContract = moduleMatch.policy.exports.length > 0
-  const shouldForbidExportAll = true
-  if (!hasExportContract) return { shouldForbidExportAll }
+  if (!hasExportContract) return {}
 
   const built = buildPatterns(moduleMatch.policy.exports)
   if (built.invalid !== undefined) {
-    return { shouldForbidExportAll, invalidPattern: built.invalid }
+    return { invalidPattern: built.invalid }
   }
-  return { shouldForbidExportAll, patterns: built.patterns }
+  return { patterns: built.patterns }
 }
 
 function buildPatterns(values: string[]): { patterns: RegExp[]; invalid?: string } {
@@ -90,9 +89,8 @@ function checkNamedExport(
   context: Rule.RuleContext,
   node: ExportNamedDeclaration,
   patterns: RegExp[] | undefined,
-  shouldForbidExportAll: boolean,
 ): void {
-  if (node.source !== null && node.specifiers.length === 0 && shouldForbidExportAll) {
+  if (node.source !== null && node.specifiers.length === 0) {
     context.report({ node, messageId: 'exportAllForbidden' })
     return
   }
@@ -141,7 +139,6 @@ function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
 }
 
 interface RuleState {
-  shouldForbidExportAll: boolean
   patterns?: RegExp[]
   invalidPattern?: string
 }

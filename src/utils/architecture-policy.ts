@@ -2,11 +2,7 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import {
-  getProjectContext,
-  isFileInProject,
-  resolveImportTarget as resolveProjectImportTarget,
-} from './tsconfig-resolution.js'
+import { getProjectContext, isFileInProject, normalizePath } from './tsconfig-resolution.js'
 
 import type { ProjectContext } from './tsconfig-resolution.js'
 
@@ -219,18 +215,6 @@ interface MatchedArchitectureModule {
 
 function countWildcards(value: string): number {
   return value.split('*').length - 1
-}
-
-export function resolveImportTarget(
-  importerFile: string,
-  projectContext: ProjectContext,
-  specifier: string,
-): string | undefined {
-  return resolveProjectImportTarget(importerFile, projectContext, specifier)
-}
-
-export function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
 }
 
 export function isPublicEntrypoint(filePath: string): boolean {
