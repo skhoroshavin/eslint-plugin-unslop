@@ -4,11 +4,8 @@ import type { Node } from 'estree'
 
 import { walkThisDeps } from './ast-utils.js'
 
-export function checkClass(
-  ctx: Rule.RuleContext,
-  classBody: Node & Rule.NodeParentExtension,
-): void {
-  const body = Reflect.get(classBody, 'body') as Array<Node & Rule.NodeParentExtension> | undefined
+export function checkClass(ctx: Rule.RuleContext, classBody: Node): void {
+  const body = getClassBodyArray(classBody)
   if (!body || body.length === 0) return
   const members = collectMembers(body)
   const hasComputed = members.some((m) => m.computed)
@@ -21,19 +18,26 @@ export function checkClass(
 function checkCtorFirst(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
+  classBody: Node,
   hasComputed: boolean,
 ): boolean {
   const ctorIdx = members.findIndex((m) => m.kind === 'constructor')
   if (ctorIdx <= 0) return false
-  report(ctx, members, classBody, hasComputed, 'constructorFirst', members[ctorIdx])
+  report({
+    ctx,
+    members,
+    classBody,
+    hasComputed,
+    messageId: 'constructorFirst',
+    target: members[ctorIdx],
+  })
   return true
 }
 
 function checkFieldOrder(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
+  classBody: Node,
   hasComputed: boolean,
 ): boolean {
   const ctorIdx = members.findIndex((m) => m.kind === 'constructor')
@@ -41,7 +45,7 @@ function checkFieldOrder(
   for (const f of members.filter((m) => m.isPublic)) {
     if (f.idx <= ctorIdx) continue
     if (members.slice(ctorIdx + 1, f.idx).some((m) => m.kind === 'method')) {
-      report(ctx, members, classBody, hasComputed, 'publicFieldOrder', f)
+      report({ ctx, members, classBody, hasComputed, messageId: 'publicFieldOrder', target: f })
       return true
     }
   }
@@ -51,7 +55,7 @@ function checkFieldOrder(
 function checkMethodOrder(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
+  classBody: Node,
   hasComputed: boolean,
 ): void {
   const methods = members.filter((m) => m.kind === 'method')
@@ -59,7 +63,7 @@ function checkMethodOrder(
   for (const m of methods) {
     if (!m.name || cyclic.has(m.name)) continue
     if (methods.some((o) => o !== m && o.thisDeps.has(m.name!) && o.idx > m.idx)) {
-      report(ctx, members, classBody, hasComputed, 'moveMemberBelow', m)
+      report({ ctx, members, classBody, hasComputed, messageId: 'moveMemberBelow', target: m })
       return
     }
   }
@@ -94,19 +98,7 @@ function methodReachesSelf(
   return false
 }
 
-function report(
-  ctx: Rule.RuleContext,
-  members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
-  hasComputed: boolean,
-  messageId: string,
-  target: MemberEntry,
-): void {
-  const input: ReportArgs = { ctx, members, classBody, hasComputed, messageId, target }
-  doReport(input)
-}
-
-function doReport(input: ReportArgs): void {
+function report(input: ReportArgs): void {
   const { ctx, members, classBody, hasComputed, messageId, target } = input
   const data = target.name && messageId === 'moveMemberBelow' ? { name: target.name } : {}
   ctx.report({
@@ -120,7 +112,7 @@ function doReport(input: ReportArgs): void {
 interface ReportArgs {
   ctx: Rule.RuleContext
   members: MemberEntry[]
-  classBody: Node & Rule.NodeParentExtension
+  classBody: Node
   hasComputed: boolean
   messageId: string
   target: MemberEntry
@@ -129,17 +121,23 @@ interface ReportArgs {
 function buildClassFix(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
-  classBody: Node & Rule.NodeParentExtension,
+  classBody: Node,
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const src = ctx.sourceCode
     const sorted = sortMembers(members)
     const texts = sorted.map((m) => src.getText(m.node))
-    const body = Reflect.get(classBody, 'body') as Array<Node & Rule.NodeParentExtension>
+    const body = getClassBodyArray(classBody)!
     const first = body[0]
     const last = body[body.length - 1]
     return fixer.replaceTextRange([first.range![0], last.range![1]], texts.join('\n\n'))
   }
+}
+
+function getClassBodyArray(classBody: Node): Node[] | undefined {
+  const raw = Reflect.get(classBody, 'body')
+  if (!Array.isArray(raw)) return undefined
+  return raw
 }
 
 function sortMembers(members: MemberEntry[]): MemberEntry[] {
@@ -172,51 +170,75 @@ function drainKahns(
 ): MemberEntry[] {
   const queue = methods.filter((m) => !m.name || inDeg.get(m.name) === 0)
   const result: MemberEntry[] = []
-  const placed = new Set<string>()
+  const state: KahnsState = { placed: new Set<string>(), inDeg, byName }
+  drainQueue(queue, result, state)
+  appendRemaining(methods, result, state.placed)
+  return result
+}
+
+function drainQueue(queue: MemberEntry[], result: MemberEntry[], state: KahnsState): void {
   while (queue.length > 0) {
     queue.sort((a, b) => a.idx - b.idx)
     const m = queue.shift()!
     result.push(m)
-    if (m.name) placed.add(m.name)
-    for (const d of m.thisDeps) {
-      if (!placed.has(d) && inDeg.has(d)) {
-        inDeg.set(d, inDeg.get(d)! - 1)
-        if (inDeg.get(d) === 0) {
-          const dm = byName.get(d)
-          if (dm) queue.push(dm)
-        }
-      }
+    if (m.name) state.placed.add(m.name)
+    decrementDeps(m, queue, state)
+  }
+}
+
+function decrementDeps(m: MemberEntry, queue: MemberEntry[], state: KahnsState): void {
+  for (const d of m.thisDeps) {
+    if (state.placed.has(d) || !state.inDeg.has(d)) continue
+    state.inDeg.set(d, state.inDeg.get(d)! - 1)
+    if (state.inDeg.get(d) === 0) {
+      const dm = state.byName.get(d)
+      if (dm) queue.push(dm)
     }
   }
+}
+
+interface KahnsState {
+  placed: Set<string>
+  inDeg: Map<string, number>
+  byName: Map<string, MemberEntry>
+}
+
+function appendRemaining(methods: MemberEntry[], result: MemberEntry[], placed: Set<string>): void {
   for (const m of methods) {
     if (m.name && !placed.has(m.name)) result.push(m)
   }
-  return result
 }
 
-function collectMembers(body: Array<Node & Rule.NodeParentExtension>): MemberEntry[] {
-  return body.map((node, idx) => {
-    const kind = getMemberKind(node)
-    const name = getMemberName(node)
-    const thisDeps = new Set<string>()
-    walkThisDeps(node, thisDeps)
-    const accessibility = Reflect.get(node, 'accessibility') as string | undefined
-    const isPublic =
-      node.type === 'PropertyDefinition' &&
-      (accessibility === 'public' || accessibility === undefined)
-    const computed = Reflect.get(node, 'computed') === true
-    return { node, idx, name, thisDeps, kind, isPublic, computed }
-  })
+function collectMembers(body: Node[]): MemberEntry[] {
+  return body.map((node, idx) => buildMemberEntry(node, idx))
+}
+
+function buildMemberEntry(node: Node, idx: number): MemberEntry {
+  const kind = getMemberKind(node)
+  const name = getMemberName(node)
+  const thisDeps = new Set<string>()
+  walkThisDeps(node, thisDeps)
+  const accessibility = strReflect(node, 'accessibility')
+  const isPublic =
+    node.type === 'PropertyDefinition' &&
+    (accessibility === 'public' || accessibility === undefined)
+  const computed = Reflect.get(node, 'computed') === true
+  return { node, idx, name, thisDeps, kind, isPublic, computed }
 }
 
 interface MemberEntry {
-  node: Node & Rule.NodeParentExtension
+  node: Node
   idx: number
   name: string | null
   thisDeps: Set<string>
   kind: 'constructor' | 'field' | 'method'
   isPublic: boolean
   computed: boolean
+}
+
+function strReflect(obj: object, key: string): string | undefined {
+  const v = Reflect.get(obj, key)
+  return typeof v === 'string' ? v : undefined
 }
 
 function getMemberKind(node: Node): 'constructor' | 'field' | 'method' {
@@ -227,7 +249,9 @@ function getMemberKind(node: Node): 'constructor' | 'field' | 'method' {
 }
 
 function getMemberName(node: Node): string | null {
-  const key = Reflect.get(node, 'key') as Record<string, unknown> | undefined
-  if (key?.type === 'Identifier' && typeof key.name === 'string') return key.name
-  return null
+  const key = Reflect.get(node, 'key')
+  if (!key || typeof key !== 'object') return null
+  if (Reflect.get(key, 'type') !== 'Identifier') return null
+  const name = Reflect.get(key, 'name')
+  return typeof name === 'string' ? name : null
 }
