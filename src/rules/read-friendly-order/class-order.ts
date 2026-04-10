@@ -1,17 +1,8 @@
-/* eslint-disable no-restricted-syntax, complexity, max-params, unslop/read-friendly-order */
 import type { Rule } from 'eslint'
-import type { Node } from 'estree'
-import { walkThisDeps } from './ast-utils.js'
 
-interface MemberEntry {
-  node: Node & Rule.NodeParentExtension
-  idx: number
-  name: string | null
-  thisDeps: Set<string>
-  kind: 'constructor' | 'field' | 'method'
-  isPublic: boolean
-  computed: boolean
-}
+import type { Node } from 'estree'
+
+import { walkThisDeps } from './ast-utils.js'
 
 export function checkClass(
   ctx: Rule.RuleContext,
@@ -103,15 +94,6 @@ function methodReachesSelf(
   return false
 }
 
-interface ReportArgs {
-  ctx: Rule.RuleContext
-  members: MemberEntry[]
-  classBody: Node & Rule.NodeParentExtension
-  hasComputed: boolean
-  messageId: string
-  target: MemberEntry
-}
-
 function report(
   ctx: Rule.RuleContext,
   members: MemberEntry[],
@@ -133,6 +115,15 @@ function doReport(input: ReportArgs): void {
     data,
     fix: hasComputed ? null : buildClassFix(ctx, members, classBody),
   })
+}
+
+interface ReportArgs {
+  ctx: Rule.RuleContext
+  members: MemberEntry[]
+  classBody: Node & Rule.NodeParentExtension
+  hasComputed: boolean
+  messageId: string
+  target: MemberEntry
 }
 
 function buildClassFix(
@@ -216,6 +207,16 @@ function collectMembers(body: Array<Node & Rule.NodeParentExtension>): MemberEnt
     const computed = Reflect.get(node, 'computed') === true
     return { node, idx, name, thisDeps, kind, isPublic, computed }
   })
+}
+
+interface MemberEntry {
+  node: Node & Rule.NodeParentExtension
+  idx: number
+  name: string | null
+  thisDeps: Set<string>
+  kind: 'constructor' | 'field' | 'method'
+  isPublic: boolean
+  computed: boolean
 }
 
 function getMemberKind(node: Node): 'constructor' | 'field' | 'method' {

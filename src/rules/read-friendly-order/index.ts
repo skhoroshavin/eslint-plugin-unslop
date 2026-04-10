@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-syntax, complexity, max-params */
 import type { Rule } from 'eslint'
 
 import type { Node, Program } from 'estree'
