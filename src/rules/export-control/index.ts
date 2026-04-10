@@ -113,7 +113,7 @@ function reportDeclarationExportNames(
   patterns: RegExp[],
 ): void {
   const declaration = node.declaration
-  if (declaration === null || declaration === undefined) return
+  if (declaration === null) return
   const names = getDeclarationNamesFromExport(declaration)
   for (const name of names) {
     if (matchesAnyPattern(name, patterns)) continue

@@ -15,6 +15,8 @@ import {
 
 import { checkClass } from './class-order.js'
 
+import { findCyclicNames, kahnsTopologicalSort } from './kahns-sort.js'
+
 import { checkTestPhases } from './test-phase.js'
 
 export default {
@@ -56,7 +58,7 @@ function checkTopLevel(ctx: Rule.RuleContext, p: Program): void {
   const decls = entries.filter((e) => !e.isImport && !e.isExternalReexport)
   filterDepsToLocal(decls)
   const eager = buildEagerSet(decls)
-  const cyclic = findCyclic(decls)
+  const cyclic = findCyclicNames(decls)
   const violations = findViolations(decls, eager, cyclic)
   if (violations.length === 0) return
   reportAll(ctx, violations, p, entries)
@@ -113,39 +115,6 @@ function expandTransitive(entries: Entry[], localNames: Set<string>, result: Set
       }
     }
   }
-}
-
-function findCyclic(entries: Entry[]): Set<string> {
-  const byName = new Map(entries.filter((e) => e.name).map((e) => [e.name!, e]))
-  const localNames = new Set(byName.keys())
-  const inCycle = new Set<string>()
-  for (const [name] of byName) {
-    if (reachesSelf({ target: name, current: name, byName, localNames, visited: new Set() })) {
-      inCycle.add(name)
-    }
-  }
-  return inCycle
-}
-
-function reachesSelf(args: ReachArgs): boolean {
-  const entry = args.byName.get(args.current)
-  if (!entry) return false
-  for (const dep of entry.deps) {
-    if (!args.localNames.has(dep)) continue
-    if (dep === args.target) return true
-    if (args.visited.has(dep)) continue
-    args.visited.add(dep)
-    if (reachesSelf({ ...args, current: dep })) return true
-  }
-  return false
-}
-
-interface ReachArgs {
-  target: string
-  current: string
-  byName: Map<string, Entry>
-  localNames: Set<string>
-  visited: Set<string>
 }
 
 function filterDepsToLocal(decls: Entry[]): void {
@@ -233,7 +202,7 @@ function buildTopFix(
     const localPublicApi = entries.filter(
       (e) => e.isLocalExportList || e.isLocalExportDefault || e.isLocalPublicExport,
     )
-    const sortedPublicApi = kahnsSort(localPublicApi)
+    const sortedPublicApi = kahnsTopologicalSort(localPublicApi, kindPriority)
 
     // Prioritize export default at the top of local public API band if present
     const exportDefaultEntry = sortedPublicApi.find((e) => e.isLocalExportDefault)
@@ -251,7 +220,7 @@ function buildTopFix(
         !e.isLocalExportDefault &&
         !e.isLocalPublicExport,
     )
-    const sortedPrivate = kahnsSort(privateDecls)
+    const sortedPrivate = kahnsTopologicalSort(privateDecls, kindPriority)
 
     // Combine all bands in canonical order
     const all = [...imports, ...externalReexports, ...prioritizedPublicApi, ...sortedPrivate]
@@ -278,46 +247,6 @@ function buildNodeTexts(src: Rule.RuleContext['sourceCode'], entries: Entry[]): 
   return result
 }
 
-function kahnsSort(decls: Entry[]): Entry[] {
-  const byName = new Map(decls.filter((e) => e.name).map((e) => [e.name!, e]))
-  const inDeg = buildInDegrees(decls, byName)
-  return drainKahns(decls, inDeg, byName)
-}
-
-function buildInDegrees(decls: Entry[], byName: Map<string, Entry>): Map<string, number> {
-  const inDeg = new Map<string, number>()
-  for (const [name] of byName) inDeg.set(name, 0)
-  for (const e of decls) {
-    for (const d of e.deps) {
-      if (inDeg.has(d)) inDeg.set(d, inDeg.get(d)! + 1)
-    }
-  }
-  return inDeg
-}
-
-function drainKahns(
-  decls: Entry[],
-  inDeg: Map<string, number>,
-  byName: Map<string, Entry>,
-): Entry[] {
-  const queue = decls.filter((e) => !e.name || inDeg.get(e.name) === 0)
-  const result: Entry[] = []
-  const state: KahnsState = { placed: new Set<string>(), inDeg, byName }
-  drainQueue(queue, result, state)
-  appendRemaining(decls, result, state.placed)
-  return result
-}
-
-function drainQueue(queue: Entry[], result: Entry[], state: KahnsState): void {
-  while (queue.length > 0) {
-    queue.sort((a, b) => kindPriority(a) - kindPriority(b) || a.idx - b.idx)
-    const e = queue.shift()!
-    result.push(e)
-    if (e.name) state.placed.add(e.name)
-    decrementDeps(e, queue, state)
-  }
-}
-
 function kindPriority(e: Entry): number {
   const kind = getDeclKind(e.node)
   switch (kind) {
@@ -329,29 +258,6 @@ function kindPriority(e: Entry): number {
       return 2
     default:
       return 3
-  }
-}
-
-function decrementDeps(e: Entry, queue: Entry[], state: KahnsState): void {
-  for (const d of e.deps) {
-    if (state.placed.has(d) || !state.inDeg.has(d)) continue
-    state.inDeg.set(d, state.inDeg.get(d)! - 1)
-    if (state.inDeg.get(d) === 0) {
-      const de = state.byName.get(d)
-      if (de && !state.placed.has(d)) queue.push(de)
-    }
-  }
-}
-
-interface KahnsState {
-  placed: Set<string>
-  inDeg: Map<string, number>
-  byName: Map<string, Entry>
-}
-
-function appendRemaining(decls: Entry[], result: Entry[], placed: Set<string>): void {
-  for (const e of decls) {
-    if (e.name && !placed.has(e.name)) result.push(e)
   }
 }
 

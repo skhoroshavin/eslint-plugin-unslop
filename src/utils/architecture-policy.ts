@@ -2,7 +2,12 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import { getProjectContext, isFileInProject, normalizePath } from './tsconfig-resolution.js'
+import {
+  getProjectContext,
+  isFileInProject,
+  normalizePath,
+  trimSlashes,
+} from './tsconfig-resolution.js'
 
 import type { ProjectContext } from './tsconfig-resolution.js'
 
@@ -236,10 +241,6 @@ interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
   shared: boolean
-}
-
-function trimSlashes(value: string): string {
-  return value.replace(/^\/+|\/+$/g, '')
 }
 
 function isOutsideProject(pathValue: string): boolean {

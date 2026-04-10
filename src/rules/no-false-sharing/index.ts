@@ -72,15 +72,15 @@ function reportUnsharedSymbols(
   const consumerGroupsBySymbol = findConsumerGroupsBySymbol({ ...options, exportedSymbols })
   for (const symbol of exportedSymbols) {
     const consumerGroups = consumerGroupsBySymbol.get(symbol.exportedName)
-    if (consumerGroups !== undefined && consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
-    const groups = consumerGroups ?? new Set<string>()
+    if (consumerGroups === undefined) continue
+    if (consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
     context.report({
       node,
       messageId: 'notTrulyShared',
       data: {
         symbol: symbol.exportedName,
-        consumerCount: String(groups.size),
-        consumerGroup: getSingleConsumerGroup(groups),
+        consumerCount: String(consumerGroups.size),
+        consumerGroup: getSingleConsumerGroup(consumerGroups),
       },
     })
   }
@@ -96,7 +96,7 @@ function collectDeclaredExportNames(program: Program): Set<string> {
 }
 
 function addNamesFromExportNamed(node: ExportNamedDeclaration, names: Set<string>): void {
-  if (node.declaration === null || node.declaration === undefined) return
+  if (node.declaration === null) return
   for (const name of getDeclarationNamesFromExport(node.declaration)) {
     names.add(name)
   }

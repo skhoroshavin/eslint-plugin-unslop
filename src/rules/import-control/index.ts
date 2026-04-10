@@ -83,7 +83,7 @@ function getSpecifier(
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
 ): string | undefined {
   const source = node.source
-  if (source === undefined || source === null) return undefined
+  if (source == null) return undefined
   return typeof source.value === 'string' ? source.value : undefined
 }
 

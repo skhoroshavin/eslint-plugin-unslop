@@ -89,7 +89,7 @@ export function resolveImportTarget(
 
   const absolute = node_path.resolve(resolved)
   const normalized = normalizePath(absolute)
-  if (!isInsideProject(context.projectRoot, normalized)) return undefined
+  if (!isInsidePath(context.projectRoot, normalized)) return undefined
   return absolute
 }
 
@@ -135,19 +135,18 @@ function normalizeSourceRootCandidate(
     ? node_path.normalize(trimmed)
     : node_path.resolve(projectRoot, trimmed)
   const relative = normalizePath(node_path.relative(projectRoot, absolute))
-  if (!isInsideProject(projectRoot, absolute) || relative === '' || relative === '.')
-    return undefined
+  if (!isInsidePath(projectRoot, absolute) || relative === '' || relative === '.') return undefined
   return trimSlashes(relative)
 }
 
-function isInsideProject(projectRoot: string, absolutePath: string): boolean {
-  const project = normalizePath(node_path.resolve(projectRoot))
-  const file = normalizePath(absolutePath)
-  if (file === project) return true
-  return file.startsWith(`${project}/`)
+function isInsidePath(parent: string, child: string): boolean {
+  const normalizedParent = normalizePath(node_path.resolve(parent))
+  const normalizedChild = normalizePath(node_path.resolve(child))
+  if (normalizedChild === normalizedParent) return true
+  return normalizedChild.startsWith(`${normalizedParent}/`)
 }
 
-function trimSlashes(value: string): string {
+export function trimSlashes(value: string): string {
   return value.replace(/^\/+|\/+$/g, '')
 }
 
