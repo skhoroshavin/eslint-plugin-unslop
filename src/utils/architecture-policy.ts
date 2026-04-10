@@ -3,6 +3,7 @@ import node_path from 'node:path'
 import type { Rule } from 'eslint'
 
 import {
+  getRelativePath,
   getProjectContext,
   isFileInProject,
   normalizePath,
@@ -12,10 +13,7 @@ import {
 import type { ProjectContext } from './tsconfig-resolution.js'
 
 export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
-  const unslopSettings = getUnslopSettings(context.settings)
-  if (unslopSettings === undefined) return undefined
-
-  const architecture = getArchitectureSettings(unslopSettings)
+  const architecture = getArchitectureSettings(context.settings)
   if (architecture === undefined) return undefined
 
   const modules = parseArchitectureModules(architecture)
@@ -32,19 +30,32 @@ export function readArchitecturePolicy(context: Rule.RuleContext): ArchitectureP
   return { projectContext, modules }
 }
 
-function getUnslopSettings(settings: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(settings)) return undefined
-  const unslop = settings.unslop
-  if (!isRecord(unslop)) return undefined
-  return unslop
+export function getArchitectureRuleState(
+  context: Rule.RuleContext,
+): ArchitectureRuleState | undefined {
+  const filename = context.filename
+  if (filename.length === 0) return undefined
+
+  const policy = readArchitecturePolicy(context)
+  if (policy === undefined) return undefined
+
+  const moduleMatch = matchFileToArchitectureModule(filename, policy)
+  if (moduleMatch === undefined) return undefined
+
+  return { filename, policy, moduleMatch }
 }
 
-function getArchitectureSettings(
-  unslopSettings: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const architecture = unslopSettings.architecture
-  if (!isRecord(architecture)) return undefined
-  return architecture
+export function getArchitectureEntrypointState(
+  context: Rule.RuleContext,
+): ArchitectureEntrypointState | undefined {
+  const state = getArchitectureRuleState(context)
+  if (state === undefined || !isPublicEntrypoint(state.filename)) return undefined
+  return state
+}
+
+function getArchitectureSettings(settings: unknown): Record<string, unknown> | undefined {
+  const unslop = getRecordProperty(settings, 'unslop')
+  return getRecordProperty(unslop, 'architecture')
 }
 
 function parseArchitectureModules(
@@ -90,6 +101,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function getRecordProperty(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined
+  const property = value[key]
+  if (!isRecord(property)) return undefined
+  return property
+}
+
 export function matchFileToArchitectureModule(
   filePath: string,
   policy: ArchitecturePolicy,
@@ -119,15 +137,23 @@ interface ArchitecturePolicy {
   modules: ArchitectureModuleDefinition[]
 }
 
+interface ArchitectureRuleState {
+  filename: string
+  policy: ArchitecturePolicy
+  moduleMatch: MatchedArchitectureModule
+}
+
+type ArchitectureEntrypointState = ArchitectureRuleState
+
 function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
-  const projectRelative = normalizePath(node_path.relative(projectContext.projectRoot, pathValue))
+  const projectRelative = getRelativePath(projectContext.projectRoot, pathValue)
   if (isOutsideProject(projectRelative)) return undefined
 
   const sourceRoot = projectContext.sourceRoot
   if (sourceRoot === undefined) return projectRelative
 
   const absoluteSourceRoot = node_path.resolve(projectContext.projectRoot, sourceRoot)
-  const sourceRelative = normalizePath(node_path.relative(absoluteSourceRoot, pathValue))
+  const sourceRelative = getRelativePath(absoluteSourceRoot, pathValue)
   if (isOutsideProject(sourceRelative)) return undefined
   return sourceRelative
 }

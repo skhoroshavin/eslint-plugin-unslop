@@ -61,13 +61,13 @@ function parseProjectContext(tsconfigPath: string): ProjectContext | undefined {
 function collectProgramFiles(program: ts.Program): Set<string> {
   const files = new Set<string>()
   for (const sourceFile of program.getSourceFiles()) {
-    files.add(normalizePath(node_path.resolve(sourceFile.fileName)))
+    files.add(normalizeResolvedPath(sourceFile.fileName))
   }
   return files
 }
 
 export function isFileInProject(filename: string, context: ProjectContext): boolean {
-  return context.projectFiles.has(normalizePath(node_path.resolve(filename)))
+  return context.projectFiles.has(normalizeResolvedPath(filename))
 }
 
 export function resolveImportTarget(
@@ -88,7 +88,7 @@ export function resolveImportTarget(
   if (result.resolvedModule?.isExternalLibraryImport === true) return undefined
 
   const absolute = node_path.resolve(resolved)
-  const normalized = normalizePath(absolute)
+  const normalized = normalizeResolvedPath(resolved)
   if (!isInsidePath(context.projectRoot, normalized)) return undefined
   return absolute
 }
@@ -134,16 +134,28 @@ function normalizeSourceRootCandidate(
   const absolute = node_path.isAbsolute(trimmed)
     ? node_path.normalize(trimmed)
     : node_path.resolve(projectRoot, trimmed)
-  const relative = normalizePath(node_path.relative(projectRoot, absolute))
+  const relative = getRelativePath(projectRoot, absolute)
   if (!isInsidePath(projectRoot, absolute) || relative === '' || relative === '.') return undefined
   return trimSlashes(relative)
 }
 
-function isInsidePath(parent: string, child: string): boolean {
-  const normalizedParent = normalizePath(node_path.resolve(parent))
-  const normalizedChild = normalizePath(node_path.resolve(child))
+export function isInsidePath(parent: string, child: string): boolean {
+  const normalizedParent = normalizeResolvedPath(parent)
+  const normalizedChild = normalizeResolvedPath(child)
   if (normalizedChild === normalizedParent) return true
   return normalizedChild.startsWith(`${normalizedParent}/`)
+}
+
+export function isSamePath(left: string, right: string): boolean {
+  return normalizeResolvedPath(left) === normalizeResolvedPath(right)
+}
+
+export function getRelativePath(from: string, to: string): string {
+  return normalizePath(node_path.relative(from, to))
+}
+
+export function normalizeResolvedPath(pathValue: string): string {
+  return normalizePath(node_path.resolve(pathValue))
 }
 
 export function trimSlashes(value: string): string {

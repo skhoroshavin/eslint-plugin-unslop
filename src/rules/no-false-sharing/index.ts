@@ -7,11 +7,13 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 import ts from 'typescript'
 
 import {
+  getArchitectureEntrypointState,
   getDeclarationNamesFromExport,
-  isPublicEntrypoint,
+  getRelativePath,
+  isInsidePath,
+  isSamePath,
   matchFileToArchitectureModule,
-  normalizePath,
-  readArchitecturePolicy,
+  normalizeResolvedPath,
   resolveImportTarget,
 } from '../../utils/index.js'
 
@@ -29,31 +31,31 @@ export default {
     },
   },
   create(context) {
-    const filename = context.filename
-    if (!filename) return {}
-
-    const policy = readArchitecturePolicy(context)
-    if (policy === undefined) return {}
-
-    const matched = matchFileToArchitectureModule(filename, policy)
-    if (matched === undefined || !matched.policy.shared) return {}
-    if (!isPublicEntrypoint(filename)) return {}
-
-    const sourceRoot = policy.projectContext.sourceRoot
-    if (sourceRoot === undefined) return {}
+    const state = buildRuleState(context)
+    if (state === undefined) return {}
 
     return {
       Program(node) {
-        reportUnsharedSymbols(context, node, {
-          entrypointFile: filename,
-          sourceDir: node_path.join(policy.projectContext.projectRoot, sourceRoot),
-          policy,
-          sharedModuleInstance: matched.instance,
-        })
+        reportUnsharedSymbols(context, node, state)
       },
     }
   },
 } satisfies Rule.RuleModule
+
+function buildRuleState(context: Rule.RuleContext): SymbolAnalysisOptions | undefined {
+  const state = getArchitectureEntrypointState(context)
+  if (state === undefined || !state.moduleMatch.policy.shared) return undefined
+
+  const sourceRoot = state.policy.projectContext.sourceRoot
+  if (sourceRoot === undefined) return undefined
+
+  return {
+    entrypointFile: state.filename,
+    sourceDir: node_path.join(state.policy.projectContext.projectRoot, sourceRoot),
+    policy: state.policy,
+    sharedModuleInstance: state.moduleMatch.instance,
+  }
+}
 
 function reportUnsharedSymbols(
   context: Rule.RuleContext,
@@ -142,9 +144,9 @@ function collectExportedSymbols(
 }
 
 function findProjectSourceFile(program: ts.Program, targetFile: string): ts.SourceFile | undefined {
-  const normalizedTarget = normalizePath(node_path.resolve(targetFile))
+  const normalizedTarget = normalizeResolvedPath(targetFile)
   for (const sourceFile of program.getSourceFiles()) {
-    const normalized = normalizePath(node_path.resolve(sourceFile.fileName))
+    const normalized = normalizeResolvedPath(sourceFile.fileName)
     if (normalized === normalizedTarget) return sourceFile
   }
   return undefined
@@ -158,7 +160,7 @@ function getCanonicalSymbol(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symb
 function getCanonicalSymbolKey(symbol: ts.Symbol): string | undefined {
   const declaration = pickPrimaryDeclaration(symbol)
   if (declaration === undefined) return undefined
-  const sourceFilePath = normalizePath(node_path.resolve(declaration.getSourceFile().fileName))
+  const sourceFilePath = normalizeResolvedPath(declaration.getSourceFile().fileName)
   return `${sourceFilePath}:${declaration.pos}:${declaration.end}:${symbol.getName()}`
 }
 
@@ -175,7 +177,7 @@ function getBackingFilePath(symbol: ts.Symbol, entrypointFile: string): string |
   const declaration = pickPrimaryDeclaration(symbol)
   if (declaration === undefined) return undefined
   const declarationFile = node_path.resolve(declaration.getSourceFile().fileName)
-  if (normalizePath(declarationFile) === normalizePath(entrypointFile)) return undefined
+  if (isSamePath(declarationFile, entrypointFile)) return undefined
   return declarationFile
 }
 
@@ -228,17 +230,9 @@ function collectConsumerGroupsFromFile(
 }
 
 function isProjectSourceFile(filePath: string, options: ConsumerGroupOptions): boolean {
-  const normalizedFile = normalizePath(filePath)
-  if (normalizedFile === normalizePath(options.entrypointFile)) return false
-  if (!isInsideSourceDirectory(filePath, options.sourceDir)) return false
+  if (isSamePath(filePath, options.entrypointFile)) return false
+  if (!isInsidePath(options.sourceDir, filePath)) return false
   return /\.[jt]sx?$/.test(filePath)
-}
-
-function isInsideSourceDirectory(filePath: string, sourceDir: string): boolean {
-  const normalizedSourceDir = normalizePath(node_path.resolve(sourceDir))
-  const normalizedFile = normalizePath(node_path.resolve(filePath))
-  if (normalizedFile === normalizedSourceDir) return true
-  return normalizedFile.startsWith(`${normalizedSourceDir}/`)
 }
 
 function collectImportedSymbolUsages(
@@ -344,12 +338,8 @@ function getConsumerKind(
   return undefined
 }
 
-function isSamePath(left: string, right: string): boolean {
-  return normalizePath(node_path.resolve(left)) === normalizePath(node_path.resolve(right))
-}
-
 function getConsumerGroup(importerPath: string, sourceDir: string): string {
-  const rel = normalizePath(node_path.relative(sourceDir, importerPath))
+  const rel = getRelativePath(sourceDir, importerPath)
   const parts = rel.split('/')
   if (parts.length <= 1) return rel
   return parts.slice(0, -1).join('/')
@@ -399,7 +389,9 @@ interface ExportedSymbolTarget {
   backingFile?: string
 }
 
-type RuleArchitecturePolicy = NonNullable<ReturnType<typeof readArchitecturePolicy>>
+type RuleArchitecturePolicy = NonNullable<
+  ReturnType<typeof getArchitectureEntrypointState>
+>['policy']
 
 type ConsumerKind = 'internal' | 'public'
 
