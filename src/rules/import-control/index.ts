@@ -7,7 +7,9 @@ import node_path from 'node:path'
 import {
   getArchitectureRuleState,
   getRelativePath,
+  isInsidePath,
   isPublicEntrypoint,
+  isSamePath,
   matchFileToArchitectureModule,
   normalizeResolvedPath,
   resolveImportTarget,
@@ -165,7 +167,9 @@ function reportDeepSameModuleImport(
 }
 
 function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {
+  if (isSamePath(importerFile, targetFile)) return false
   const importerDir = node_path.dirname(importerFile)
+  if (!isInsidePath(importerDir, targetFile)) return false
   const relativeTarget = getRelativePath(importerDir, targetFile)
   return isForwardTraversalTooDeep(relativeTarget)
 }

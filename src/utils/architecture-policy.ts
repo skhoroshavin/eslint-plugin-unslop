@@ -12,7 +12,55 @@ import {
 
 import type { ProjectContext } from './tsconfig-resolution.js'
 
-export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
+export function getArchitectureRuleState(
+  context: Rule.RuleContext,
+): ArchitectureRuleState | undefined {
+  const filename = context.filename
+  if (filename.length === 0) return undefined
+
+  const policy = readArchitecturePolicy(context)
+  if (policy === undefined) return undefined
+
+  const moduleMatch = matchFileToArchitectureModule(filename, policy)
+  if (moduleMatch === undefined) return undefined
+
+  return { filename, policy, moduleMatch }
+}
+
+export function matchFileToArchitectureModule(
+  filePath: string,
+  policy: ArchitecturePolicy,
+): MatchedArchitectureModule | undefined {
+  const normalized = normalizePath(filePath)
+  const candidatePath = applySourceRoot(normalized, policy.projectContext)
+  if (candidatePath === undefined) return undefined
+  const segments = splitPathSegments(candidatePath)
+  const matches = collectModuleMatches(segments, policy.modules)
+  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+}
+
+export function isPublicEntrypoint(filePath: string): boolean {
+  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
+}
+
+const ENTRYPOINT_FILES = new Set([
+  'index.ts',
+  'index.tsx',
+  'index.js',
+  'index.jsx',
+  'types.ts',
+  'types.tsx',
+  'types.js',
+  'types.jsx',
+])
+
+interface ArchitectureRuleState {
+  filename: string
+  policy: ArchitecturePolicy
+  moduleMatch: MatchedArchitectureModule
+}
+
+function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
   const architecture = getArchitectureSettings(context.settings)
   if (architecture === undefined) return undefined
 
@@ -30,27 +78,9 @@ export function readArchitecturePolicy(context: Rule.RuleContext): ArchitectureP
   return { projectContext, modules }
 }
 
-export function getArchitectureRuleState(
-  context: Rule.RuleContext,
-): ArchitectureRuleState | undefined {
-  const filename = context.filename
-  if (filename.length === 0) return undefined
-
-  const policy = readArchitecturePolicy(context)
-  if (policy === undefined) return undefined
-
-  const moduleMatch = matchFileToArchitectureModule(filename, policy)
-  if (moduleMatch === undefined) return undefined
-
-  return { filename, policy, moduleMatch }
-}
-
-export function getArchitectureEntrypointState(
-  context: Rule.RuleContext,
-): ArchitectureEntrypointState | undefined {
-  const state = getArchitectureRuleState(context)
-  if (state === undefined || !isPublicEntrypoint(state.filename)) return undefined
-  return state
+interface ArchitecturePolicy {
+  projectContext: ProjectContext
+  modules: ArchitectureModuleDefinition[]
 }
 
 function getArchitectureSettings(settings: unknown): Record<string, unknown> | undefined {
@@ -97,10 +127,6 @@ function isValidMatcher(matcher: string): boolean {
   return !matcher.includes('**')
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 function getRecordProperty(value: unknown, key: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined
   const property = value[key]
@@ -108,16 +134,8 @@ function getRecordProperty(value: unknown, key: string): Record<string, unknown>
   return property
 }
 
-export function matchFileToArchitectureModule(
-  filePath: string,
-  policy: ArchitecturePolicy,
-): MatchedArchitectureModule | undefined {
-  const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.projectContext)
-  if (candidatePath === undefined) return undefined
-  const segments = splitPathSegments(candidatePath)
-  const matches = collectModuleMatches(segments, policy.modules)
-  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
@@ -131,19 +149,6 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
     order: 0,
   }
 }
-
-interface ArchitecturePolicy {
-  projectContext: ProjectContext
-  modules: ArchitectureModuleDefinition[]
-}
-
-interface ArchitectureRuleState {
-  filename: string
-  policy: ArchitecturePolicy
-  moduleMatch: MatchedArchitectureModule
-}
-
-type ArchitectureEntrypointState = ArchitectureRuleState
 
 function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
   const projectRelative = getRelativePath(projectContext.projectRoot, pathValue)
@@ -244,29 +249,14 @@ interface MatchedArchitectureModule {
   order: number
 }
 
-function countWildcards(value: string): number {
-  return value.split('*').length - 1
-}
-
-export function isPublicEntrypoint(filePath: string): boolean {
-  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
-}
-
-const ENTRYPOINT_FILES = new Set([
-  'index.ts',
-  'index.tsx',
-  'index.js',
-  'index.jsx',
-  'types.ts',
-  'types.tsx',
-  'types.js',
-  'types.jsx',
-])
-
 interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
   shared: boolean
+}
+
+function countWildcards(value: string): number {
+  return value.split('*').length - 1
 }
 
 function isOutsideProject(pathValue: string): boolean {

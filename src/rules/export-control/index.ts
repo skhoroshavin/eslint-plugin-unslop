@@ -2,7 +2,11 @@ import type { Rule } from 'eslint'
 
 import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
-import { getArchitectureEntrypointState, getDeclarationNamesFromExport } from '../../utils/index.js'
+import {
+  getArchitectureRuleState,
+  getDeclarationNamesFromExport,
+  isPublicEntrypoint,
+} from '../../utils/index.js'
 
 export default {
   meta: {
@@ -55,8 +59,9 @@ export default {
 } satisfies Rule.RuleModule
 
 function buildRuleState(context: Rule.RuleContext): RuleState {
-  const state = getArchitectureEntrypointState(context)
+  const state = getArchitectureRuleState(context)
   if (state === undefined) return { kind: 'inactive' }
+  if (!isPublicEntrypoint(state.filename)) return { kind: 'inactive' }
   if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 
   const built = buildPatterns(state.moduleMatch.policy.exports)

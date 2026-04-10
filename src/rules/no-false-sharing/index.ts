@@ -7,10 +7,11 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 import ts from 'typescript'
 
 import {
-  getArchitectureEntrypointState,
+  getArchitectureRuleState,
   getDeclarationNamesFromExport,
   getRelativePath,
   isInsidePath,
+  isPublicEntrypoint,
   isSamePath,
   matchFileToArchitectureModule,
   normalizeResolvedPath,
@@ -43,8 +44,9 @@ export default {
 } satisfies Rule.RuleModule
 
 function buildRuleState(context: Rule.RuleContext): SymbolAnalysisOptions | undefined {
-  const state = getArchitectureEntrypointState(context)
-  if (state === undefined || !state.moduleMatch.policy.shared) return undefined
+  const state = getArchitectureRuleState(context)
+  if (state === undefined || !isPublicEntrypoint(state.filename)) return undefined
+  if (!state.moduleMatch.policy.shared) return undefined
 
   const sourceRoot = state.policy.projectContext.sourceRoot
   if (sourceRoot === undefined) return undefined
@@ -389,9 +391,7 @@ interface ExportedSymbolTarget {
   backingFile?: string
 }
 
-type RuleArchitecturePolicy = NonNullable<
-  ReturnType<typeof getArchitectureEntrypointState>
->['policy']
+type RuleArchitecturePolicy = NonNullable<ReturnType<typeof getArchitectureRuleState>>['policy']
 
 type ConsumerKind = 'internal' | 'public'
 
