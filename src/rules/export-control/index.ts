@@ -3,10 +3,9 @@ import type { Rule } from 'eslint'
 import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
 import {
+  getArchitectureRuleState,
   getDeclarationNamesFromExport,
   isPublicEntrypoint,
-  matchFileToArchitectureModule,
-  readArchitecturePolicy,
 } from '../../utils/index.js'
 
 export default {
@@ -25,11 +24,8 @@ export default {
     },
   },
   create(context) {
-    const filename = context.filename
-    if (!filename) return {}
-
-    const state = buildRuleState(context, filename)
-    if (state?.invalidPattern !== undefined) {
+    const state = buildRuleState(context)
+    if (state.kind === 'invalid') {
       const root = context.getSourceCode().ast
       context.report({
         node: root,
@@ -39,39 +35,40 @@ export default {
       return {}
     }
 
+    if (state.kind !== 'active') {
+      return {
+        ExportAllDeclaration(node) {
+          checkExportAll(context, node)
+        },
+      }
+    }
+
     return {
       ExportNamedDeclaration(node) {
-        checkNamedExport(context, node, state?.patterns, state?.shouldForbidExportAll ?? true)
+        checkNamedExport(context, node, state.patterns)
       },
       ExportAllDeclaration(node) {
         // Always reject export * from ... in all files per spec
         checkExportAll(context, node)
       },
       ExportDefaultDeclaration(node) {
-        if (state?.patterns === undefined) return
         checkDefaultExport(context, node, state.patterns)
       },
     }
   },
 } satisfies Rule.RuleModule
 
-function buildRuleState(context: Rule.RuleContext, filename: string): RuleState | undefined {
-  const policy = readArchitecturePolicy(context)
-  if (policy === undefined) return undefined
-  if (!isPublicEntrypoint(filename)) return undefined
+function buildRuleState(context: Rule.RuleContext): RuleState {
+  const state = getArchitectureRuleState(context)
+  if (state === undefined) return { kind: 'inactive' }
+  if (!isPublicEntrypoint(state.filename)) return { kind: 'inactive' }
+  if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 
-  const moduleMatch = matchFileToArchitectureModule(filename, policy)
-  if (moduleMatch === undefined) return undefined
-
-  const hasExportContract = moduleMatch.policy.exports.length > 0
-  const shouldForbidExportAll = true
-  if (!hasExportContract) return { shouldForbidExportAll }
-
-  const built = buildPatterns(moduleMatch.policy.exports)
+  const built = buildPatterns(state.moduleMatch.policy.exports)
   if (built.invalid !== undefined) {
-    return { shouldForbidExportAll, invalidPattern: built.invalid }
+    return { kind: 'invalid', invalidPattern: built.invalid }
   }
-  return { shouldForbidExportAll, patterns: built.patterns }
+  return { kind: 'active', patterns: built.patterns }
 }
 
 function buildPatterns(values: string[]): { patterns: RegExp[]; invalid?: string } {
@@ -89,14 +86,12 @@ function buildPatterns(values: string[]): { patterns: RegExp[]; invalid?: string
 function checkNamedExport(
   context: Rule.RuleContext,
   node: ExportNamedDeclaration,
-  patterns: RegExp[] | undefined,
-  shouldForbidExportAll: boolean,
+  patterns: RegExp[],
 ): void {
-  if (node.source !== null && node.specifiers.length === 0 && shouldForbidExportAll) {
+  if (node.source !== null && node.specifiers.length === 0) {
     context.report({ node, messageId: 'exportAllForbidden' })
     return
   }
-  if (patterns === undefined) return
   for (const specifier of node.specifiers) {
     if (specifier.exported.type !== 'Identifier') continue
     if (matchesAnyPattern(specifier.exported.name, patterns)) continue
@@ -115,7 +110,7 @@ function reportDeclarationExportNames(
   patterns: RegExp[],
 ): void {
   const declaration = node.declaration
-  if (declaration === null || declaration === undefined) return
+  if (declaration === null) return
   const names = getDeclarationNamesFromExport(declaration)
   for (const name of names) {
     if (matchesAnyPattern(name, patterns)) continue
@@ -140,8 +135,7 @@ function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(symbol))
 }
 
-interface RuleState {
-  shouldForbidExportAll: boolean
-  patterns?: RegExp[]
-  invalidPattern?: string
-}
+type RuleState =
+  | { kind: 'inactive' }
+  | { kind: 'invalid'; invalidPattern: string }
+  | { kind: 'active'; patterns: RegExp[] }

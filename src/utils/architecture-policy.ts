@@ -2,42 +2,90 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import { getTsconfigInfo, resolveExistingFile, resolvePathAlias } from './tsconfig-resolution.js'
+import {
+  getRelativePath,
+  getProjectContext,
+  isFileInProject,
+  normalizePath,
+  trimSlashes,
+} from './tsconfig-resolution.js'
 
-import type { TsconfigInfo } from './tsconfig-resolution.js'
+import type { ProjectContext } from './tsconfig-resolution.js'
 
-export function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
-  const unslopSettings = getUnslopSettings(context.settings)
-  if (unslopSettings === undefined) return undefined
+export function getArchitectureRuleState(
+  context: Rule.RuleContext,
+): ArchitectureRuleState | undefined {
+  const filename = context.filename
+  if (filename.length === 0) return undefined
 
-  const architecture = getArchitectureSettings(unslopSettings)
+  const policy = readArchitecturePolicy(context)
+  if (policy === undefined) return undefined
+
+  const moduleMatch = matchFileToArchitectureModule(filename, policy)
+  if (moduleMatch === undefined) return undefined
+
+  return { filename, policy, moduleMatch }
+}
+
+export function matchFileToArchitectureModule(
+  filePath: string,
+  policy: ArchitecturePolicy,
+): MatchedArchitectureModule | undefined {
+  const normalized = normalizePath(filePath)
+  const candidatePath = applySourceRoot(normalized, policy.projectContext)
+  if (candidatePath === undefined) return undefined
+  const segments = splitPathSegments(candidatePath)
+  const matches = collectModuleMatches(segments, policy.modules)
+  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+}
+
+export function isPublicEntrypoint(filePath: string): boolean {
+  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
+}
+
+const ENTRYPOINT_FILES = new Set([
+  'index.ts',
+  'index.tsx',
+  'index.js',
+  'index.jsx',
+  'types.ts',
+  'types.tsx',
+  'types.js',
+  'types.jsx',
+])
+
+interface ArchitectureRuleState {
+  filename: string
+  policy: ArchitecturePolicy
+  moduleMatch: MatchedArchitectureModule
+}
+
+function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
+  const architecture = getArchitectureSettings(context.settings)
   if (architecture === undefined) return undefined
 
   const modules = parseArchitectureModules(architecture)
   if (modules.length === 0) return undefined
 
-  const tsconfigInfo = getTsconfigInfo(context.filename)
-  if (tsconfigInfo === undefined) {
+  const projectContext = getProjectContext(context.filename)
+  if (projectContext === undefined) {
     warnMissingTsconfig(context.filename)
     return undefined
   }
 
-  return { tsconfigInfo, modules }
+  if (!isFileInProject(context.filename, projectContext)) return undefined
+
+  return { projectContext, modules }
 }
 
-function getUnslopSettings(settings: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(settings)) return undefined
-  const unslop = settings.unslop
-  if (!isRecord(unslop)) return undefined
-  return unslop
+interface ArchitecturePolicy {
+  projectContext: ProjectContext
+  modules: ArchitectureModuleDefinition[]
 }
 
-function getArchitectureSettings(
-  unslopSettings: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const architecture = unslopSettings.architecture
-  if (!isRecord(architecture)) return undefined
-  return architecture
+function getArchitectureSettings(settings: unknown): Record<string, unknown> | undefined {
+  const unslop = getRecordProperty(settings, 'unslop')
+  return getRecordProperty(unslop, 'architecture')
 }
 
 function parseArchitectureModules(
@@ -79,20 +127,15 @@ function isValidMatcher(matcher: string): boolean {
   return !matcher.includes('**')
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+function getRecordProperty(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined
+  const property = value[key]
+  if (!isRecord(property)) return undefined
+  return property
 }
 
-export function matchFileToArchitectureModule(
-  filePath: string,
-  policy: ArchitecturePolicy,
-): MatchedArchitectureModule | undefined {
-  const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.tsconfigInfo)
-  if (candidatePath === undefined) return undefined
-  const segments = splitPathSegments(candidatePath)
-  const matches = collectModuleMatches(segments, policy.modules)
-  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
@@ -107,20 +150,15 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
   }
 }
 
-interface ArchitecturePolicy {
-  tsconfigInfo: TsconfigInfo
-  modules: ArchitectureModuleDefinition[]
-}
-
-function applySourceRoot(pathValue: string, tsconfigInfo: TsconfigInfo): string | undefined {
-  const projectRelative = normalizePath(node_path.relative(tsconfigInfo.projectRoot, pathValue))
+function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
+  const projectRelative = getRelativePath(projectContext.projectRoot, pathValue)
   if (isOutsideProject(projectRelative)) return undefined
 
-  const sourceRoot = tsconfigInfo.sourceRoot
+  const sourceRoot = projectContext.sourceRoot
   if (sourceRoot === undefined) return projectRelative
 
-  const absoluteSourceRoot = node_path.resolve(tsconfigInfo.projectRoot, sourceRoot)
-  const sourceRelative = normalizePath(node_path.relative(absoluteSourceRoot, pathValue))
+  const absoluteSourceRoot = node_path.resolve(projectContext.projectRoot, sourceRoot)
+  const sourceRelative = getRelativePath(absoluteSourceRoot, pathValue)
   if (isOutsideProject(sourceRelative)) return undefined
   return sourceRelative
 }
@@ -211,48 +249,14 @@ interface MatchedArchitectureModule {
   order: number
 }
 
-function countWildcards(value: string): number {
-  return value.split('*').length - 1
-}
-
-export function resolveImportTarget(
-  importerFile: string,
-  tsconfigInfo: TsconfigInfo,
-  specifier: string,
-): string | undefined {
-  if (!specifier.startsWith('.')) return resolvePathAlias(specifier, tsconfigInfo)
-  const importerDir = node_path.dirname(importerFile)
-  const base = node_path.resolve(importerDir, specifier)
-  return resolveExistingFile(base)
-}
-
-export function normalizePath(pathValue: string): string {
-  return pathValue.replace(/\\/g, '/').split(node_path.sep).join('/')
-}
-
-export function isPublicEntrypoint(filePath: string): boolean {
-  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
-}
-
-const ENTRYPOINT_FILES = new Set([
-  'index.ts',
-  'index.tsx',
-  'index.js',
-  'index.jsx',
-  'types.ts',
-  'types.tsx',
-  'types.js',
-  'types.jsx',
-])
-
 interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
   shared: boolean
 }
 
-function trimSlashes(value: string): string {
-  return value.replace(/^\/+|\/+$/g, '')
+function countWildcards(value: string): number {
+  return value.split('*').length - 1
 }
 
 function isOutsideProject(pathValue: string): boolean {
@@ -263,7 +267,7 @@ function warnMissingTsconfig(filename: string): void {
   if (warnedMissingTsconfigForFiles.has(filename)) return
   warnedMissingTsconfigForFiles.add(filename)
   console.warn(
-    `[eslint-plugin-unslop] No tsconfig.json found for ${filename}. Architecture rules are disabled for this file.`,
+    `[eslint-plugin-unslop] No usable TypeScript project context found for ${filename}. Architecture rules are disabled for this file.`,
   )
 }
 

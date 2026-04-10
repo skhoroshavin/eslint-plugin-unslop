@@ -226,6 +226,18 @@ scenario('missing tsconfig for linted file fails gracefully without reporting', 
   code: 'export const Button = 1',
 })
 
+scenario('semantic project setup failure fails open', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/tsconfig.json', content: '{' },
+    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
+  ],
+  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  filename: 'src/ui/components/index.ts',
+  code: 'export const Button = 1',
+})
+
 scenario('missing architecture settings fails gracefully without reporting', rule, {
   files: [
     TSCONFIG,

@@ -1,23 +1,8 @@
-/* eslint-disable no-restricted-syntax, complexity, unslop/read-friendly-order */
 import type { Rule } from 'eslint'
+
 import type { Node, Program } from 'estree'
 
-type Phase = 'setup' | 'teardown' | 'test'
-
-interface PhaseCall {
-  node: Node & Rule.NodeParentExtension
-  phase: Phase
-  idx: number
-}
-
-const SETUP = new Set(['beforeAll', 'beforeEach'])
-const TEARDOWN = new Set(['afterAll', 'afterEach'])
-const TESTS = new Set(['test', 'it', 'describe'])
-
-export function checkTestPhases(
-  ctx: Rule.RuleContext,
-  p: Program & Rule.NodeParentExtension,
-): void {
+export function checkTestPhases(ctx: Rule.RuleContext, p: Program): void {
   const calls = collectTestCalls(p)
   if (calls.length === 0) return
 
@@ -42,12 +27,12 @@ export function checkTestPhases(
   }
 }
 
-function collectTestCalls(p: Program & Rule.NodeParentExtension): PhaseCall[] {
+function collectTestCalls(p: Program): PhaseCall[] {
   const calls: PhaseCall[] = []
   for (let i = 0; i < p.body.length; i++) {
     const phase = getPhase(p.body[i])
     if (phase) {
-      calls.push({ node: p.body[i] as Node & Rule.NodeParentExtension, phase, idx: i })
+      calls.push({ node: p.body[i], phase, idx: i })
     }
   }
   return calls
@@ -55,10 +40,17 @@ function collectTestCalls(p: Program & Rule.NodeParentExtension): PhaseCall[] {
 
 function getPhase(stmt: Node): Phase | null {
   if (stmt.type !== 'ExpressionStatement') return null
+  return getPhaseFromExpression(stmt)
+}
+
+function getPhaseFromExpression(stmt: Node): Phase | null {
   const expr = Reflect.get(stmt, 'expression')
   if (!expr || typeof expr !== 'object') return null
   if (Reflect.get(expr, 'type') !== 'CallExpression') return null
-  const callee = Reflect.get(expr, 'callee')
+  return getPhaseFromCallee(Reflect.get(expr, 'callee'))
+}
+
+function getPhaseFromCallee(callee: unknown): Phase | null {
   if (!callee || typeof callee !== 'object') return null
   if (Reflect.get(callee, 'type') !== 'Identifier') return null
   const name = Reflect.get(callee, 'name')
@@ -72,24 +64,25 @@ function classifyCallee(name: string): Phase | null {
   return null
 }
 
+const SETUP = new Set(['beforeAll', 'beforeEach'])
+
+const TEARDOWN = new Set(['afterAll', 'afterEach'])
+
+const TESTS = new Set(['test', 'it', 'describe'])
+
 function buildPhaseFix(
   ctx: Rule.RuleContext,
-  p: Program & Rule.NodeParentExtension,
+  p: Program,
   calls: PhaseCall[],
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
     const ordered = buildPhaseOrder(p, calls)
-    const text = ordered
-      .map((o) => ctx.sourceCode.getText(o.node as Node & Rule.NodeParentExtension))
-      .join('\n\n')
+    const text = ordered.map((o) => ctx.sourceCode.getText(o.node)).join('\n\n')
     return fixer.replaceTextRange([p.range![0], p.range![1]], text)
   }
 }
 
-function buildPhaseOrder(
-  p: Program & Rule.NodeParentExtension,
-  calls: PhaseCall[],
-): Array<{ node: Node; idx: number }> {
+function buildPhaseOrder(p: Program, calls: PhaseCall[]): Array<{ node: Node; idx: number }> {
   const others: Array<{ node: Node; idx: number }> = []
   const setups: Array<{ node: Node; idx: number }> = []
   const teardowns: Array<{ node: Node; idx: number }> = []
@@ -103,3 +96,11 @@ function buildPhaseOrder(
   }
   return [...others, ...setups, ...teardowns, ...tests]
 }
+
+interface PhaseCall {
+  node: Node
+  phase: Phase
+  idx: number
+}
+
+type Phase = 'setup' | 'teardown' | 'test'

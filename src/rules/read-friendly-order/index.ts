@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-syntax, complexity, max-params */
 import type { Rule } from 'eslint'
 
 import type { Node, Program } from 'estree'
@@ -15,6 +14,8 @@ import {
 } from './ast-utils.js'
 
 import { checkClass } from './class-order.js'
+
+import { findCyclicNames, kahnsTopologicalSort } from './kahns-sort.js'
 
 import { checkTestPhases } from './test-phase.js'
 
@@ -40,25 +41,24 @@ export default {
   create(context) {
     return {
       Program(pgm) {
-        const p = pgm as unknown as Program & Rule.NodeParentExtension
-        checkTestPhases(context, p)
-        checkTopLevel(context, p)
+        checkTestPhases(context, pgm)
+        checkTopLevel(context, pgm)
       },
       ClassBody(node) {
-        checkClass(context, node as unknown as Node & Rule.NodeParentExtension)
+        checkClass(context, node)
       },
     }
   },
 } satisfies Rule.RuleModule
 
-function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtension): void {
+function checkTopLevel(ctx: Rule.RuleContext, p: Program): void {
   const entries = collectEntries(p)
 
   // Filter to declarations (not imports or external re-exports)
   const decls = entries.filter((e) => !e.isImport && !e.isExternalReexport)
   filterDepsToLocal(decls)
   const eager = buildEagerSet(decls)
-  const cyclic = findCyclic(decls)
+  const cyclic = findCyclicNames(decls)
   const violations = findViolations(decls, eager, cyclic)
   if (violations.length === 0) return
   reportAll(ctx, violations, p, entries)
@@ -67,27 +67,25 @@ function checkTopLevel(ctx: Rule.RuleContext, p: Program & Rule.NodeParentExtens
 function collectEntries(p: Program): Entry[] {
   const entries: Entry[] = []
   for (let i = 0; i < p.body.length; i++) {
-    const stmt = p.body[i] as Node & Rule.NodeParentExtension
-    const name = getDeclName(stmt)
-    const isExternalReexport = isReexportNode(stmt)
-    const isLocalExport = isLocalExportList(stmt)
-    const isExportDefault = isLocalExportDefault(stmt)
-    const isPublicExport = isLocalPublicExport(stmt)
-
-    entries.push({
-      node: stmt,
-      idx: i,
-      name,
-      deps: collectDeps(stmt, name),
-      eager: isEagerInit(stmt),
-      isImport: stmt.type === 'ImportDeclaration',
-      isExternalReexport: isExternalReexport,
-      isLocalExportList: isLocalExport,
-      isLocalExportDefault: isExportDefault,
-      isLocalPublicExport: isPublicExport,
-    })
+    entries.push(buildEntry(p.body[i], i))
   }
   return entries
+}
+
+function buildEntry(stmt: Node, idx: number): Entry {
+  const name = getDeclName(stmt)
+  return {
+    node: stmt,
+    idx,
+    name,
+    deps: collectDeps(stmt, name),
+    eager: isEagerInit(stmt),
+    isImport: stmt.type === 'ImportDeclaration',
+    isExternalReexport: isReexportNode(stmt),
+    isLocalExportList: isLocalExportList(stmt),
+    isLocalExportDefault: isLocalExportDefault(stmt),
+    isLocalPublicExport: isLocalPublicExport(stmt),
+  }
 }
 
 function buildEagerSet(entries: Entry[]): Set<string> {
@@ -119,49 +117,6 @@ function expandTransitive(entries: Entry[], localNames: Set<string>, result: Set
   }
 }
 
-function findCyclic(entries: Entry[]): Set<string> {
-  const byName = new Map(entries.filter((e) => e.name).map((e) => [e.name!, e]))
-  const localNames = new Set(byName.keys())
-  const inCycle = new Set<string>()
-  for (const [name] of byName) {
-    if (reachesSelf(name, name, byName, localNames, new Set())) {
-      inCycle.add(name)
-    }
-  }
-  return inCycle
-}
-
-function reachesSelf(
-  target: string,
-  current: string,
-  byName: Map<string, Entry>,
-  localNames: Set<string>,
-  visited: Set<string>,
-): boolean {
-  return doReachesSelf({ target, current, byName, localNames, visited })
-}
-
-function doReachesSelf(args: ReachArgs): boolean {
-  const entry = args.byName.get(args.current)
-  if (!entry) return false
-  for (const dep of entry.deps) {
-    if (!args.localNames.has(dep)) continue
-    if (dep === args.target) return true
-    if (args.visited.has(dep)) continue
-    args.visited.add(dep)
-    if (doReachesSelf({ ...args, current: dep })) return true
-  }
-  return false
-}
-
-interface ReachArgs {
-  target: string
-  current: string
-  byName: Map<string, Entry>
-  localNames: Set<string>
-  visited: Set<string>
-}
-
 function filterDepsToLocal(decls: Entry[]): void {
   const localNames = new Set(decls.filter((e) => e.name).map((e) => e.name!))
   for (const e of decls) {
@@ -175,10 +130,6 @@ function findViolations(decls: Entry[], eager: Set<string>, cyclic: Set<string>)
     if (!e.name || eager.has(e.name) || cyclic.has(e.name)) continue
     const consumer = firstConsumer(e.name, decls)
     if (!consumer) continue
-    // Check if this is a real violation:
-    // 1. Declaration comes before consumer in source (e.idx < consumer.idx)
-    // 2. AND declaration is in same or lower band than consumer
-    //    (if declaration is in higher band, it's correct for it to come first)
     const eBand = getBand(e)
     const consumerBand = getBand(consumer)
     if (e.idx < consumer.idx && eBand >= consumerBand) {
@@ -205,12 +156,7 @@ function firstConsumer(name: string, decls: Entry[]): Entry | undefined {
   return best
 }
 
-function reportAll(
-  ctx: Rule.RuleContext,
-  violations: Entry[],
-  p: Program & Rule.NodeParentExtension,
-  entries: Entry[],
-): void {
+function reportAll(ctx: Rule.RuleContext, violations: Entry[], p: Program, entries: Entry[]): void {
   doReportAll({ ctx, violations, p, entries })
 }
 
@@ -229,7 +175,7 @@ function doReportAll(args: ReportAllArgs): void {
 interface ReportAllArgs {
   ctx: Rule.RuleContext
   violations: Entry[]
-  p: Program & Rule.NodeParentExtension
+  p: Program
   entries: Entry[]
 }
 
@@ -239,7 +185,7 @@ function isConst(name: string): boolean {
 
 function buildTopFix(
   ctx: Rule.RuleContext,
-  p: Program & Rule.NodeParentExtension,
+  p: Program,
   entries: Entry[],
 ): (fixer: Rule.RuleFixer) => Rule.Fix {
   return (fixer) => {
@@ -256,7 +202,7 @@ function buildTopFix(
     const localPublicApi = entries.filter(
       (e) => e.isLocalExportList || e.isLocalExportDefault || e.isLocalPublicExport,
     )
-    const sortedPublicApi = kahnsSort(localPublicApi)
+    const sortedPublicApi = kahnsTopologicalSort(localPublicApi, kindPriority)
 
     // Prioritize export default at the top of local public API band if present
     const exportDefaultEntry = sortedPublicApi.find((e) => e.isLocalExportDefault)
@@ -274,7 +220,7 @@ function buildTopFix(
         !e.isLocalExportDefault &&
         !e.isLocalPublicExport,
     )
-    const sortedPrivate = kahnsSort(privateDecls)
+    const sortedPrivate = kahnsTopologicalSort(privateDecls, kindPriority)
 
     // Combine all bands in canonical order
     const all = [...imports, ...externalReexports, ...prioritizedPublicApi, ...sortedPrivate]
@@ -301,74 +247,22 @@ function buildNodeTexts(src: Rule.RuleContext['sourceCode'], entries: Entry[]): 
   return result
 }
 
-function kahnsSort(decls: Entry[]): Entry[] {
-  const byName = new Map(decls.filter((e) => e.name).map((e) => [e.name!, e]))
-  const inDeg = buildInDegrees(decls, byName)
-  return drainKahns(decls, inDeg, byName)
-}
-
-function buildInDegrees(decls: Entry[], byName: Map<string, Entry>): Map<string, number> {
-  const inDeg = new Map<string, number>()
-  for (const [name] of byName) inDeg.set(name, 0)
-  for (const e of decls) {
-    for (const d of e.deps) {
-      if (inDeg.has(d)) inDeg.set(d, inDeg.get(d)! + 1)
-    }
+function kindPriority(e: Entry): number {
+  const kind = getDeclKind(e.node)
+  switch (kind) {
+    case 'constant':
+      return 0
+    case 'type':
+      return 1
+    case 'function':
+      return 2
+    default:
+      return 3
   }
-  return inDeg
-}
-
-function drainKahns(
-  decls: Entry[],
-  inDeg: Map<string, number>,
-  byName: Map<string, Entry>,
-): Entry[] {
-  const queue = decls.filter((e) => !e.name || inDeg.get(e.name) === 0)
-  const result: Entry[] = []
-  const placed = new Set<string>()
-
-  // Priority: constants (0) < types (1) < functions (2) < other (3)
-  const kindPriority = (e: Entry): number => {
-    const kind = getDeclKind(e.node as unknown as import('estree').Node)
-    switch (kind) {
-      case 'constant':
-        return 0
-      case 'type':
-        return 1
-      case 'function':
-        return 2
-      default:
-        return 3
-    }
-  }
-
-  while (queue.length > 0) {
-    // Sort by: 1) kind priority (constants first), 2) original index
-    queue.sort((a, b) => {
-      const priorityDiff = kindPriority(a) - kindPriority(b)
-      if (priorityDiff !== 0) return priorityDiff
-      return a.idx - b.idx
-    })
-    const e = queue.shift()!
-    result.push(e)
-    if (e.name) placed.add(e.name)
-    for (const d of e.deps) {
-      if (placed.has(d) || !inDeg.has(d)) continue
-      inDeg.set(d, inDeg.get(d)! - 1)
-      if (inDeg.get(d) === 0) {
-        const de = byName.get(d)
-        if (de && !placed.has(d)) queue.push(de)
-      }
-    }
-  }
-  for (const e of decls) {
-    if (e.name && !placed.has(e.name)) result.push(e)
-  }
-  return result
 }
 
 interface Entry {
-  node: Node & Rule.NodeParentExtension
+  node: Node
   idx: number
   name: string | null
   deps: Set<string>

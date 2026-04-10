@@ -40,7 +40,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: no-false-sharing SHALL count consumers in directory mode only
 
-`unslop/no-false-sharing` MUST count distinct consumer groups using directory-level grouping and apply the threshold to shared entrypoint-exported symbols. Both value imports and type-only imports count as consumers.
+`unslop/no-false-sharing` MUST count distinct consumer groups using directory-level grouping and apply the threshold to shared entrypoint-exported symbols. Both value imports and type-only imports count as consumers. Same-shared-module internal consumers count as one collapsed internal consumer group for the shared module instance, whether they import from the shared entrypoint file or a backing internal file for a re-exported symbol. An internal consumer group alone is insufficient to satisfy the sharing threshold.
 
 #### Scenario: Symbol imported from one directory group
 
@@ -51,6 +51,16 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 - **WHEN** a shared entrypoint-exported symbol is imported by files in at least two distinct directory-level consumer groups
 - **THEN** `unslop/no-false-sharing` MUST allow that symbol
+
+#### Scenario: Multiple internal consumers collapse to one shared-module group
+
+- **WHEN** multiple files in the same shared module consume the same exported symbol through the shared entrypoint or its backing internal file
+- **THEN** `unslop/no-false-sharing` MUST count those internal consumers as one consumer group for that shared module instance
+
+#### Scenario: Internal-only consumer group is insufficient
+
+- **WHEN** the only consumers of a shared entrypoint-exported symbol are files within that same shared module
+- **THEN** `unslop/no-false-sharing` MUST report that symbol as not truly shared
 
 ### Requirement: Import control SHALL forbid local cross-module namespace imports
 
@@ -68,7 +78,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 
-`unslop/import-control` MUST treat cross-module imports as forbidden unless the importer module explicitly allows the target module via `imports`, or the import is implicitly allowed as a shallow relative entrypoint import (see below).
+`unslop/import-control` MUST treat cross-module imports as forbidden unless the importer module explicitly allows the target module via `imports`, or the import is implicitly allowed as a shallow relative entrypoint import (see below). Importer and target module identity MUST be derived from the TypeScript semantic project for the linted file. If a semantic project cannot be created for that file, `unslop/import-control` MUST report nothing for that file.
 
 #### Scenario: Allowed cross-module edge
 
@@ -85,9 +95,14 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 - **WHEN** either importer file or import target file does not match any architecture module key
 - **THEN** `unslop/import-control` MUST treat it as an anonymous module keyed by its directory with an empty `imports` policy, and apply normal boundary checks against that default
 
+#### Scenario: Semantic project unavailable
+
+- **WHEN** a linted file has no usable TypeScript semantic project for architecture analysis
+- **THEN** `unslop/import-control` MUST become a no-op and report no boundary errors for that file
+
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 
-`unslop/import-control` MUST allow cross-module imports only when the import target resolves to `index.ts` or `types.ts` in the target module.
+`unslop/import-control` MUST allow cross-module imports only when the import target resolves to `index.ts` or `types.ts` in the target module. Import target resolution MUST use the TypeScript semantic project for the linted file rather than handwritten alias or extension probing.
 
 #### Scenario: Cross-module import targets entrypoint via explicit policy
 
@@ -120,7 +135,7 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
 
-`unslop/import-control` MUST enforce same-module depth limits for local imports based on resolved target identity, regardless of whether the import uses `./` relative syntax or any tsconfig-configured alias syntax.
+`unslop/import-control` MUST enforce same-module depth limits for local imports based on resolved target identity from the TypeScript semantic project, regardless of whether the import uses `./` relative syntax or any tsconfig-configured alias syntax.
 
 #### Scenario: Same-module shallow relative import is allowed
 

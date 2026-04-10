@@ -5,10 +5,13 @@ import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } 
 import node_path from 'node:path'
 
 import {
+  getArchitectureRuleState,
+  getRelativePath,
+  isInsidePath,
   isPublicEntrypoint,
+  isSamePath,
   matchFileToArchitectureModule,
-  normalizePath,
-  readArchitecturePolicy,
+  normalizeResolvedPath,
   resolveImportTarget,
 } from '../../utils/index.js'
 
@@ -29,21 +32,18 @@ export default {
     },
   },
   create(context) {
-    const filename = context.filename
-    if (!filename) return {}
-
-    const policy = readArchitecturePolicy(context)
-    if (policy === undefined) return {}
+    const state = getArchitectureRuleState(context)
+    if (state === undefined) return {}
 
     return {
       ImportDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, state)
       },
       ExportNamedDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, state)
       },
       ExportAllDeclaration(node) {
-        checkDeclaration(context, node, filename, policy)
+        checkDeclaration(context, node, state)
       },
     }
   },
@@ -52,53 +52,47 @@ export default {
 function checkDeclaration(
   context: Rule.RuleContext,
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  filename: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
+  state: RuleState,
 ): void {
-  const specifier = getSpecifier(node)
-  if (specifier === undefined) return
-
-  const importer = getImporter(filename, policy)
-  if (importer === undefined) return
-
-  const resolvedTarget = resolveImportTarget(filename, policy.tsconfigInfo, specifier)
-  if (resolvedTarget === undefined) return
-  const targetFile = normalizePath(resolvedTarget)
-
-  const importee = getImportee(targetFile, policy)
-  if (importee === undefined) return
+  const edge = resolveDeclarationEdge(node, state)
+  if (edge === undefined) return
 
   checkModuleEdge({
     context,
+    ...edge,
+  })
+}
+
+function resolveDeclarationEdge(
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
+  state: RuleState,
+): DeclarationEdge | undefined {
+  const specifier = getSpecifier(node)
+  if (specifier === undefined) return undefined
+
+  const resolvedTarget = resolveImportTarget(state.filename, state.policy.projectContext, specifier)
+  if (resolvedTarget === undefined) return undefined
+
+  const targetFile = normalizeResolvedPath(resolvedTarget)
+  const importee = matchFileToArchitectureModule(targetFile, state.policy)
+  if (importee === undefined) return undefined
+
+  return {
     node,
     specifier,
-    importerFile: filename,
-    importer,
+    importerFile: state.filename,
+    importer: state.moduleMatch,
     importee,
     targetFile,
-  })
+  }
 }
 
 function getSpecifier(
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
 ): string | undefined {
   const source = node.source
-  if (source === undefined || source === null) return undefined
+  if (source == null) return undefined
   return typeof source.value === 'string' ? source.value : undefined
-}
-
-function getImporter(
-  filename: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(filename, policy)
-}
-
-function getImportee(
-  targetFile: string,
-  policy: NonNullable<ReturnType<typeof readArchitecturePolicy>>,
-) {
-  return matchFileToArchitectureModule(targetFile, policy)
 }
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
@@ -151,6 +145,17 @@ interface EdgeCheckOptions {
   targetFile: string
 }
 
+interface DeclarationEdge {
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
+  specifier: string
+  importerFile: string
+  importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
+  importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
+  targetFile: string
+}
+
+type RuleState = NonNullable<ReturnType<typeof getArchitectureRuleState>>
+
 function reportDeepSameModuleImport(
   context: Rule.RuleContext,
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
@@ -162,8 +167,10 @@ function reportDeepSameModuleImport(
 }
 
 function isSameModuleImportTooDeep(importerFile: string, targetFile: string): boolean {
-  const importerDir = normalizePath(node_path.dirname(importerFile))
-  const relativeTarget = normalizePath(node_path.relative(importerDir, targetFile))
+  if (isSamePath(importerFile, targetFile)) return false
+  const importerDir = node_path.dirname(importerFile)
+  if (!isInsidePath(importerDir, targetFile)) return false
+  const relativeTarget = getRelativePath(importerDir, targetFile)
   return isForwardTraversalTooDeep(relativeTarget)
 }
 

@@ -1,60 +1,102 @@
-import node_fs from 'node:fs'
-
 import node_path from 'node:path'
 
-import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
+import ts from 'typescript'
 
-import type { Cache, TsConfigResult } from 'get-tsconfig'
+export function getProjectContext(filename: string): ProjectContext | undefined {
+  const tsconfigPath = ts.findConfigFile(
+    node_path.dirname(filename),
+    ts.sys.fileExists,
+    'tsconfig.json',
+  )
+  if (tsconfigPath === undefined) return undefined
 
-export function getTsconfigInfo(filename: string): TsconfigInfo | undefined {
-  const searchPath = node_path.dirname(filename)
-  const tsconfig = getTsconfig(searchPath, 'tsconfig.json', tsconfigSearchCache)
-  if (tsconfig === null) return undefined
-
-  const cached = tsconfigInfoCache.get(tsconfig.path)
+  const resolvedTsconfigPath = node_path.resolve(tsconfigPath)
+  const cached = projectContextCache.get(resolvedTsconfigPath)
   if (cached !== undefined) return cached
 
-  const info = parseTsconfigInfo(tsconfig)
-  tsconfigInfoCache.set(tsconfig.path, info)
-  return info
+  const context = parseProjectContext(resolvedTsconfigPath)
+  if (context === undefined) return undefined
+  projectContextCache.set(resolvedTsconfigPath, context)
+  return context
 }
 
-export function resolvePathAlias(specifier: string, info: TsconfigInfo): string | undefined {
-  if (info.pathsMatcher === null) return undefined
-  const candidates = info.pathsMatcher(specifier)
-  const [first] = candidates
-  if (first === undefined) return undefined
-  return resolveExistingFile(first)
-}
+function parseProjectContext(tsconfigPath: string): ProjectContext | undefined {
+  const readResult = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
+  if (readResult.error !== undefined) return undefined
 
-export interface TsconfigInfo {
-  projectRoot: string
-  sourceRoot: string | undefined
-  pathsMatcher: ((specifier: string) => string[]) | null
-}
-
-export function resolveExistingFile(basePath: string): string | undefined {
-  const candidates = buildCandidates(basePath)
-  for (const candidate of candidates) {
-    const resolved = resolveCandidate(candidate)
-    if (resolved !== undefined) return resolved
-  }
-  return undefined
-}
-
-function parseTsconfigInfo(tsconfig: TsConfigResult): TsconfigInfo {
-  const projectRoot = node_path.dirname(tsconfig.path)
-  return {
+  const projectRoot = node_path.dirname(tsconfigPath)
+  const parsed = ts.parseJsonConfigFileContent(
+    readResult.config,
+    ts.sys,
     projectRoot,
-    sourceRoot: deriveSourceRoot(tsconfig, projectRoot),
-    pathsMatcher: createPathsMatcher(tsconfig),
+    undefined,
+    tsconfigPath,
+  )
+  if (parsed.errors.length > 0) return undefined
+
+  const program = ts.createProgram({
+    rootNames: parsed.fileNames,
+    options: parsed.options,
+    projectReferences: parsed.projectReferences,
+  })
+  const moduleResolutionCache = ts.createModuleResolutionCache(
+    projectRoot,
+    getCanonicalFileName,
+    parsed.options,
+  )
+
+  return {
+    tsconfigPath,
+    projectRoot,
+    sourceRoot: deriveSourceRoot(parsed.options, projectRoot),
+    compilerOptions: parsed.options,
+    parsedCommandLine: parsed,
+    moduleResolutionCache,
+    program,
+    checker: program.getTypeChecker(),
+    projectFiles: collectProgramFiles(program),
   }
 }
 
-function deriveSourceRoot(tsconfig: TsConfigResult, projectRoot: string): string | undefined {
-  const compilerOptions = tsconfig.config.compilerOptions
-  if (compilerOptions === undefined) return undefined
+function collectProgramFiles(program: ts.Program): Set<string> {
+  const files = new Set<string>()
+  for (const sourceFile of program.getSourceFiles()) {
+    files.add(normalizeResolvedPath(sourceFile.fileName))
+  }
+  return files
+}
 
+export function isFileInProject(filename: string, context: ProjectContext): boolean {
+  return context.projectFiles.has(normalizeResolvedPath(filename))
+}
+
+export function resolveImportTarget(
+  importerFile: string,
+  context: ProjectContext,
+  specifier: string,
+): string | undefined {
+  const result = ts.resolveModuleName(
+    specifier,
+    importerFile,
+    context.compilerOptions,
+    ts.sys,
+    context.moduleResolutionCache,
+  )
+
+  const resolved = result.resolvedModule?.resolvedFileName
+  if (resolved === undefined) return undefined
+  if (result.resolvedModule?.isExternalLibraryImport === true) return undefined
+
+  const absolute = node_path.resolve(resolved)
+  const normalized = normalizeResolvedPath(resolved)
+  if (!isInsidePath(context.projectRoot, normalized)) return undefined
+  return absolute
+}
+
+function deriveSourceRoot(
+  compilerOptions: ts.CompilerOptions,
+  projectRoot: string,
+): string | undefined {
   const rootDir = normalizeSourceRootCandidate(compilerOptions.rootDir, projectRoot)
   if (rootDir !== undefined) return rootDir
 
@@ -65,12 +107,12 @@ function deriveSourceRoot(tsconfig: TsConfigResult, projectRoot: string): string
 }
 
 function inferSourceRootFromPaths(
-  paths: Record<string, string[]> | undefined,
+  paths: Record<string, readonly string[]> | undefined,
   projectRoot: string,
 ): string | undefined {
   if (paths === undefined) return undefined
   for (const targets of Object.values(paths)) {
-    if (!Array.isArray(targets) || targets.length === 0) continue
+    if (targets.length === 0) continue
     const firstTarget = targets[0]
     if (typeof firstTarget !== 'string') continue
     const wildcardIndex = firstTarget.indexOf('*')
@@ -92,62 +134,53 @@ function normalizeSourceRootCandidate(
   const absolute = node_path.isAbsolute(trimmed)
     ? node_path.normalize(trimmed)
     : node_path.resolve(projectRoot, trimmed)
-  const relative = normalizePath(node_path.relative(projectRoot, absolute))
-  if (relative === '' || relative === '.' || isOutsideProject(relative)) return undefined
+  const relative = getRelativePath(projectRoot, absolute)
+  if (!isInsidePath(projectRoot, absolute) || relative === '' || relative === '.') return undefined
   return trimSlashes(relative)
 }
 
-function resolveCandidate(candidate: string): string | undefined {
-  if (!node_fs.existsSync(candidate)) return undefined
-  const stat = node_fs.statSync(candidate)
-  if (stat.isFile()) return candidate
-  if (!stat.isDirectory()) return undefined
-
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    const indexPath = node_path.join(candidate, `index${extension}`)
-    if (!node_fs.existsSync(indexPath)) continue
-    const indexStat = node_fs.statSync(indexPath)
-    if (indexStat.isFile()) return indexPath
-  }
-  return undefined
+export function isInsidePath(parent: string, child: string): boolean {
+  const normalizedParent = normalizeResolvedPath(parent)
+  const normalizedChild = normalizeResolvedPath(child)
+  if (normalizedChild === normalizedParent) return true
+  return normalizedChild.startsWith(`${normalizedParent}/`)
 }
 
-function buildCandidates(basePath: string): string[] {
-  const candidates: string[] = []
-  for (const extension of FILE_EXTENSIONS) {
-    candidates.push(basePath + extension)
-  }
-
-  for (const extension of FILE_EXTENSIONS.slice(1)) {
-    candidates.push(node_path.join(basePath, `index${extension}`))
-  }
-
-  for (const extension of JS_IMPORT_EXTENSIONS) {
-    if (!basePath.endsWith(extension)) continue
-    const tsExtension = extension === '.jsx' ? '.tsx' : '.ts'
-    candidates.push(basePath.slice(0, -extension.length) + tsExtension)
-  }
-  return candidates
+export function isSamePath(left: string, right: string): boolean {
+  return normalizeResolvedPath(left) === normalizeResolvedPath(right)
 }
 
-const JS_IMPORT_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs']
-
-const FILE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
-
-function trimSlashes(value: string): string {
-  return value.replace(/^\/+/g, '').replace(/\/+$/g, '')
+export function getRelativePath(from: string, to: string): string {
+  return normalizePath(node_path.relative(from, to))
 }
 
-function normalizePath(pathValue: string): string {
+export function normalizeResolvedPath(pathValue: string): string {
+  return normalizePath(node_path.resolve(pathValue))
+}
+
+export function trimSlashes(value: string): string {
+  return value.replace(/^\/+|\/+$/g, '')
+}
+
+export function normalizePath(pathValue: string): string {
   return pathValue.replace(/\\/g, '/')
 }
 
-function isOutsideProject(relativePath: string): boolean {
-  return (
-    relativePath === '..' || relativePath.startsWith('../') || node_path.isAbsolute(relativePath)
-  )
+function getCanonicalFileName(pathValue: string): string {
+  if (ts.sys.useCaseSensitiveFileNames) return pathValue
+  return pathValue.toLowerCase()
 }
 
-const tsconfigSearchCache: Cache = new Map()
+export interface ProjectContext {
+  tsconfigPath: string
+  projectRoot: string
+  sourceRoot: string | undefined
+  compilerOptions: ts.CompilerOptions
+  parsedCommandLine: ts.ParsedCommandLine
+  moduleResolutionCache: ts.ModuleResolutionCache
+  program: ts.Program
+  checker: ts.TypeChecker
+  projectFiles: Set<string>
+}
 
-const tsconfigInfoCache = new Map<string, TsconfigInfo>()
+const projectContextCache = new Map<string, ProjectContext>()
