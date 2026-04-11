@@ -105,7 +105,8 @@ function extractConstDeclarators(stmt: Node): VariableDeclarator[] | undefined {
 
 function isExcludedInitializer(declarator: VariableDeclarator): boolean {
   const init = declarator.init
-  if (init === null || init === undefined) return false
+  // No initializer means `declare const` — an ambient type declaration, not a value.
+  if (init === null || init === undefined) return true
   return (
     init.type === 'ObjectExpression' ||
     init.type === 'NewExpression' ||

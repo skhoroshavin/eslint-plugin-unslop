@@ -47,6 +47,11 @@ scenario('class-valued const is ignored', rule, {
   code: 'const Cls = class {}',
 })
 
+scenario('declare const with no initializer is ignored', rule, {
+  typescript: true,
+  code: 'declare const FOO: string',
+})
+
 scenario('object literal initializer is ignored', rule, {
   code: "const STATUS_COLORS = { new: 'green', old: 'gray' }",
 })

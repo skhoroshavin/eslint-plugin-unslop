@@ -52,6 +52,11 @@
 - **WHEN** an identifier only appears in `export default FOO`
 - **THEN** `unslop/no-single-use-constants` MUST NOT count that export statement as a use
 
+#### Scenario: Ambient declare const is ignored
+
+- **WHEN** a module-scope `const` declaration has no initializer (i.e., it is a `declare const` ambient type declaration)
+- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator
+
 #### Scenario: Object literal initializer is ignored
 
 - **WHEN** a module-scope `const` identifier is initialized with an object literal (e.g., a dispatch table, configuration object, or state machine record)
