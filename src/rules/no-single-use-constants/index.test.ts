@@ -47,6 +47,28 @@ scenario('class-valued const is ignored', rule, {
   code: 'const Cls = class {}',
 })
 
+scenario('object literal initializer is ignored', rule, {
+  code: "const STATUS_COLORS = { new: 'green', old: 'gray' }",
+})
+
+scenario('array literal initializer is reported when used once', rule, {
+  code: "const OPTIONAL_SECTIONS = ['experience', 'education']\nvoid OPTIONAL_SECTIONS",
+  errors: [{ messageId: 'singleUse', data: { name: 'OPTIONAL_SECTIONS', count: '1' } }],
+})
+
+scenario('constructor call initializer is ignored', rule, {
+  code: "const EU_REGIONS = new Set(['westeurope'])",
+})
+
+scenario('generic factory call initializer is ignored', rule, {
+  typescript: true,
+  code:
+    'interface MySchema {}\n' +
+    'declare function createValidate<T>(): () => boolean\n' +
+    'const validate = createValidate<MySchema>()\n' +
+    'void validate',
+})
+
 // --- re-export and export-default do not count as uses ---
 
 scenario('re-export does not count as a use', rule, {

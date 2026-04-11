@@ -107,10 +107,24 @@ function isExcludedInitializer(declarator: VariableDeclarator): boolean {
   const init = declarator.init
   if (init === null || init === undefined) return false
   return (
+    init.type === 'ObjectExpression' ||
+    init.type === 'NewExpression' ||
     init.type === 'ArrowFunctionExpression' ||
     init.type === 'FunctionExpression' ||
-    init.type === 'ClassExpression'
+    init.type === 'ClassExpression' ||
+    hasExplicitTypeArguments(init)
   )
+}
+
+function hasExplicitTypeArguments(node: MaybeTypedCallExpression): boolean {
+  if (node.type !== 'CallExpression') return false
+  return node.typeArguments !== undefined || node.typeParameters !== undefined
+}
+
+interface MaybeTypedCallExpression {
+  type: string
+  typeArguments?: unknown
+  typeParameters?: unknown
 }
 
 function collectExportedNames(program: Program, names: Set<string>): void {

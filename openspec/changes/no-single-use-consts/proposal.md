@@ -5,7 +5,7 @@ The plugin currently catches several forms of dead or misleading code, but it do
 ## What Changes
 
 - Add a new `unslop/no-single-use-constants` rule that reports module-scope `const` declarations whose real usage count across the project is 0 or 1.
-- Exclude destructured declarators and constants initialized with function or class expressions so the rule stays focused on inlineable values rather than named APIs.
+- Exclude destructured declarators and constants initialized with function or class expressions, object literals, constructor calls, or generic factory calls (call expressions with explicit TypeScript type arguments) so the rule stays focused on trivially inlineable values rather than named data structures, performance-optimized collections, or factory-produced resources.
 - Count cross-file usages through TypeScript semantic symbol resolution while ignoring import and export-only positions that do not represent real consumption.
 - Generalize TypeScript project-context discovery so rules outside the architecture rule set can safely reuse the same semantic project lookup and fallback behavior.
 

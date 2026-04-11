@@ -100,6 +100,24 @@ Alternatives considered:
 
 Rollback strategy: revert the new rule wiring and point architecture-policy back to the previous helper entry point. Because this change does not introduce persisted state or data migrations, rollback is code-only.
 
+### 5. Extend exclusions to structured data and factory expressions
+
+`isExcludedInitializer` will return `true` for two additional initializer types beyond function and class expressions: `ObjectExpression` and `NewExpression`. A separate check will also return `true` for `CallExpression` nodes that carry TypeScript type arguments (`TSTypeParameterInstantiation`).
+
+Why this approach:
+
+- The proposal already frames the rule as targeting "inlineable values." Object literals and constructor calls produce structured data whose name carries semantic identity — dispatch tables, state machine records, configuration maps, or performance structures like `new Set([...])`. Inlining them is not a mechanical substitution; it would change readability and sometimes semantics.
+- `new Set([...])` and `new Map([...])` are the canonical module-scope performance pattern: the structure is built once so later `.has()` or `.get()` calls are O(1). The rule must not force that construction inline into every call site.
+- Generic factory calls such as `typia.createValidate<T>()` produce resources that are expensive or semantically significant to recreate on each invocation. The explicit type argument is the syntactic signal that distinguishes this from a plain value-returning function call.
+
+Alternatives considered:
+
+- Size or complexity threshold on literals (e.g., exempt only objects or arrays with more than N entries). Rejected for now because the threshold is arbitrary, hard to explain to users, and would complicate a rule that is still establishing its core shape. If large literal payloads prove noisy in practice, that can be revisited as a follow-up refinement rather than broadening the baseline exclusion set now.
+- Exempt all `CallExpression` initializers. Rejected because `const result = compute()` immediately returned or passed is the prototypical single-use alias that the rule targets; a blanket exemption would remove most of the rule's value for non-exported locals.
+- Exempt only `MemberExpression` callees (method calls). Rejected because it is an approximation that misses top-level generic factory calls like `createValidate<T>()` while still allowing ambiguous method calls; the type-argument signal is more precise.
+
+Implementation note: the `TSTypeParameterInstantiation` check applies to the ESLint/TypeScript-ESLint AST layer inside `isExcludedInitializer`, consistent with the other initializer-type checks there. No TypeScript compiler API is needed for this exclusion.
+
 ## Open Questions
 
 - None at this stage. The remaining work is to encode the counting and exclusion rules precisely in specs and tests.

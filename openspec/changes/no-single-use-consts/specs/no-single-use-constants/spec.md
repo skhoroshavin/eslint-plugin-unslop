@@ -23,6 +23,10 @@
 
 `unslop/no-single-use-constants` MUST ignore declarations that are not plain module-scope inlineable constants. The rule MUST skip declarators with destructured ids, declarators initialized with `ArrowFunctionExpression`, `FunctionExpression`, or `ClassExpression`, identifiers that appear only in import or export specifier positions, and bare `export default IDENTIFIER` statements.
 
+### Requirement: no-single-use-constants SHALL NOT report constants initialized with structured data or factory expressions
+
+`unslop/no-single-use-constants` MUST ignore module-scope `const` declarators whose initializer is an `ObjectExpression` or `NewExpression`. These represent named structured data — dispatch tables, configuration objects, or performance-optimized structures such as `new Set([...])` — where the name is not an alias for a trivially inlineable value but is instead a deliberate semantic or performance choice. The rule MUST also ignore declarators whose initializer is a `CallExpression` carrying explicit TypeScript type arguments, as these represent generic factory or builder calls whose results are intentionally cached at module scope.
+
 #### Scenario: Destructured const is ignored
 
 - **WHEN** a module-scope `const` declaration uses an object or array pattern instead of a plain identifier
@@ -47,6 +51,26 @@
 
 - **WHEN** an identifier only appears in `export default FOO`
 - **THEN** `unslop/no-single-use-constants` MUST NOT count that export statement as a use
+
+#### Scenario: Object literal initializer is ignored
+
+- **WHEN** a module-scope `const` identifier is initialized with an object literal (e.g., a dispatch table, configuration object, or state machine record)
+- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
+
+#### Scenario: Array literal initializer is reported when used once
+
+- **WHEN** a module-scope `const` identifier is initialized with an array literal and is read exactly once across the project
+- **THEN** `unslop/no-single-use-constants` MUST report that declarator with count `1`
+
+#### Scenario: Constructor call initializer is ignored
+
+- **WHEN** a module-scope `const` identifier is initialized with a `new` expression (e.g., `new Set([...])`, `new Map([...])`)
+- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
+
+#### Scenario: Generic factory call initializer is ignored
+
+- **WHEN** a module-scope `const` identifier is initialized with a call expression that carries explicit TypeScript type arguments (e.g., `typia.createValidate<MySchema>()`, `builder.compile<T>()`)
+- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
 
 ### Requirement: no-single-use-constants SHALL count project-wide semantic uses
 
