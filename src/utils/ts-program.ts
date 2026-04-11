@@ -21,7 +21,7 @@ export function getTypeScriptProjectContext(filename: string): ProjectContext | 
 }
 
 export function isFileInProject(filename: string, context: ProjectContext): boolean {
-  return context.projectFiles.has(resolveNormalized(filename))
+  return context.projectFiles.has(normalizeResolvedPath(filename))
 }
 
 function parseProjectContext(tsconfigPath: string): ProjectContext | undefined {
@@ -38,14 +38,10 @@ function parseProjectContext(tsconfigPath: string): ProjectContext | undefined {
   )
   if (parsed.errors.length > 0) return undefined
 
-  return buildContext(tsconfigPath, projectRoot, parsed)
+  return buildContext(projectRoot, parsed)
 }
 
-function buildContext(
-  tsconfigPath: string,
-  projectRoot: string,
-  parsed: ts.ParsedCommandLine,
-): ProjectContext {
+function buildContext(projectRoot: string, parsed: ts.ParsedCommandLine): ProjectContext {
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
     options: parsed.options,
@@ -58,11 +54,9 @@ function buildContext(
   )
 
   return {
-    tsconfigPath,
     projectRoot,
     sourceRoot: deriveSourceRoot(parsed.options, projectRoot),
     compilerOptions: parsed.options,
-    parsedCommandLine: parsed,
     moduleResolutionCache,
     program,
     checker: program.getTypeChecker(),
@@ -73,7 +67,7 @@ function buildContext(
 function collectProjectFiles(program: ts.Program): Set<string> {
   const files = new Set<string>()
   for (const sourceFile of program.getSourceFiles()) {
-    files.add(resolveNormalized(sourceFile.fileName))
+    files.add(normalizeResolvedPath(sourceFile.fileName))
   }
   return files
 }
@@ -119,28 +113,28 @@ function normalizeSourceRootCandidate(
   const absolute = node_path.isAbsolute(trimmed)
     ? node_path.normalize(trimmed)
     : node_path.resolve(projectRoot, trimmed)
-  const relative = forwardSlashes(node_path.relative(projectRoot, absolute))
+  const relative = normalizePath(node_path.relative(projectRoot, absolute))
   if (!isChildPath(projectRoot, absolute) || relative === '' || relative === '.') return undefined
-  return trimEdgeSlashes(relative)
+  return trimSlashes(relative)
 }
 
 // --- private path helpers (local copies to avoid circular dependency with tsconfig-resolution) ---
 
-function resolveNormalized(filePath: string): string {
-  return forwardSlashes(node_path.resolve(filePath))
+function normalizeResolvedPath(filePath: string): string {
+  return normalizePath(node_path.resolve(filePath))
 }
 
-function forwardSlashes(value: string): string {
+function normalizePath(value: string): string {
   return value.replace(/\\/g, '/')
 }
 
 function isChildPath(parent: string, child: string): boolean {
-  const normalizedParent = resolveNormalized(parent)
-  const normalizedChild = resolveNormalized(child)
+  const normalizedParent = normalizeResolvedPath(parent)
+  const normalizedChild = normalizeResolvedPath(child)
   return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`)
 }
 
-function trimEdgeSlashes(value: string): string {
+function trimSlashes(value: string): string {
   return value.replace(/^\/+|\/+$/g, '')
 }
 
@@ -150,11 +144,9 @@ function getCanonicalFileName(pathValue: string): string {
 }
 
 export interface ProjectContext {
-  tsconfigPath: string
   projectRoot: string
   sourceRoot: string | undefined
   compilerOptions: ts.CompilerOptions
-  parsedCommandLine: ts.ParsedCommandLine
   moduleResolutionCache: ts.ModuleResolutionCache
   program: ts.Program
   checker: ts.TypeChecker

@@ -28,17 +28,14 @@ export default {
   create(context) {
     const filename = context.filename
     const exportedNames = new Set<string>()
-    let programNode: Program | undefined
 
     return {
       Program(node) {
-        programNode = node
         collectExportedNames(node, exportedNames)
       },
-      'Program:exit'() {
-        if (programNode === undefined) return
+      'Program:exit'(node: Program) {
         const tsContext = filename.length > 0 ? getTypeScriptProjectContext(filename) : undefined
-        analyzeProgram({ ruleCtx: context, exportedNames, tsContext, filename }, programNode)
+        analyzeProgram({ ruleCtx: context, exportedNames, tsContext, filename }, node)
       },
     }
   },
@@ -46,9 +43,9 @@ export default {
 
 function analyzeProgram(analysisCtx: AnalysisContext, program: Program): void {
   for (const stmt of program.body) {
-    const decl = extractConstDeclaration(stmt)
-    if (decl === undefined) continue
-    for (const declarator of decl.declarators) {
+    const declarators = extractConstDeclarators(stmt)
+    if (declarators === undefined) continue
+    for (const declarator of declarators) {
       checkDeclarator(analysisCtx, declarator)
     }
   }
@@ -93,7 +90,7 @@ interface AnalysisContext {
   filename: string
 }
 
-function extractConstDeclaration(stmt: Node): { declarators: VariableDeclarator[] } | undefined {
+function extractConstDeclarators(stmt: Node): VariableDeclarator[] | undefined {
   let decl: VariableDeclaration | undefined
   if (stmt.type === 'ExportNamedDeclaration') {
     if (stmt.declaration?.type === 'VariableDeclaration') {
@@ -103,7 +100,7 @@ function extractConstDeclaration(stmt: Node): { declarators: VariableDeclarator[
     decl = stmt
   }
   if (decl === undefined || decl.kind !== 'const') return undefined
-  return { declarators: decl.declarations }
+  return decl.declarations
 }
 
 function isExcludedInitializer(declarator: VariableDeclarator): boolean {
@@ -172,10 +169,7 @@ function countExportedUses(
 
 function findTsSourceFile(program: ts.Program, filename: string): ts.SourceFile | undefined {
   const normalized = normalizeResolvedPath(filename)
-  for (const sf of program.getSourceFiles()) {
-    if (normalizeResolvedPath(sf.fileName) === normalized) return sf
-  }
-  return undefined
+  return program.getSourceFiles().find((sf) => normalizeResolvedPath(sf.fileName) === normalized)
 }
 
 function findDeclarationSymbol(
