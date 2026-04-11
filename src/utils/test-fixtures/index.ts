@@ -143,4 +143,5 @@ interface ScenarioFile {
 interface ScenarioError {
   messageId?: string
   message?: string
+  data?: Record<string, string>
 }
