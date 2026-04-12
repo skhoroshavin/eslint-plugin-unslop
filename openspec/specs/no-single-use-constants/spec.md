@@ -25,7 +25,7 @@
 
 ### Requirement: no-single-use-constants SHALL NOT report constants initialized with structured data or factory expressions
 
-`unslop/no-single-use-constants` MUST ignore module-scope `const` declarators whose initializer is an `ObjectExpression` or `NewExpression`. These represent named structured data — dispatch tables, configuration objects, or performance-optimized structures such as `new Set([...])` — where the name is not an alias for a trivially inlineable value but is instead a deliberate semantic or performance choice. The rule MUST also ignore declarators whose initializer is a `CallExpression` carrying explicit TypeScript type arguments, as these represent generic factory or builder calls whose results are intentionally cached at module scope.
+`unslop/no-single-use-constants` MUST ignore module-scope `const` declarators whose initializer is an `ObjectExpression` or `NewExpression`. These represent named structured data - dispatch tables, configuration objects, or performance-optimized structures such as `new Set([...])` - where the name is not an alias for a trivially inlineable value but is instead a deliberate semantic or performance choice. The rule MUST also ignore declarators whose initializer is a `CallExpression` carrying explicit TypeScript type arguments, as these represent generic factory or builder calls whose results are intentionally cached at module scope.
 
 #### Scenario: Destructured const is ignored
 
