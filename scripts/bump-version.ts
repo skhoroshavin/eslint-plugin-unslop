@@ -4,7 +4,6 @@ import { execSync } from 'node:child_process'
 
 const ROOT = path.join(import.meta.dirname, '..')
 const BUMP_ARGS: readonly ['major', 'minor', 'patch'] = ['major', 'minor', 'patch']
-const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)$/
 const PKG_PATH = path.join(ROOT, 'package.json')
 const LOCK_PATH = path.join(ROOT, 'package-lock.json')
 
@@ -57,7 +56,7 @@ export interface ParsedVersion {
 }
 
 export function parseVersion(version: string): ParsedVersion {
-  const m = VERSION_RE.exec(version)
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
   if (!m) throw new Error(`Invalid version (expected MAJOR.MINOR.PATCH): ${version}`)
   const [, major, minor, patch] = m
   return { major: Number(major), minor: Number(minor), patch: Number(patch) }

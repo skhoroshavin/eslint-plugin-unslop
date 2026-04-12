@@ -34,8 +34,10 @@ export default [
       'max-lines': ['error', { max: 600 }],
       'unslop/read-friendly-order': ['error'],
       'unslop/import-control': ['error'],
+      'unslop/no-whitebox-testing': 'error',
       'unslop/export-control': ['error'],
       'unslop/no-false-sharing': 'error',
+      'unslop/no-single-use-constants': 'error',
       'no-restricted-syntax': [
         'error',
         {

@@ -80,7 +80,12 @@ function getSpecifier(node: ImportDeclaration): string | undefined {
 function isRecognizedTestFile(filename: string): boolean {
   if (filename.length === 0) return false
   const basename = node_path.basename(filename)
-  return TEST_FILE_PATTERNS.some((pattern) => pattern.test(basename))
+  return (
+    /^.+\.test\..+$/.test(basename) ||
+    /^.+\.spec\..+$/.test(basename) ||
+    /^.+\.[^.]+-test\..+$/.test(basename) ||
+    /^.+\.[^.]+-spec\..+$/.test(basename)
+  )
 }
 
 function isSameDirectoryImport(importerFile: string, targetFile: string): boolean {
@@ -98,10 +103,3 @@ interface ResolvedImport {
 }
 
 type RuleState = NonNullable<ReturnType<typeof getArchitectureRuleState>>
-
-const TEST_FILE_PATTERNS: RegExp[] = [
-  /^.+\.test\..+$/,
-  /^.+\.spec\..+$/,
-  /^.+\.[^.]+-test\..+$/,
-  /^.+\.[^.]+-spec\..+$/,
-]
