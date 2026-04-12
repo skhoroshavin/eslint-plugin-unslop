@@ -8,7 +8,6 @@ import {
   getArchitectureRuleState,
   getRelativePath,
   isInsidePath,
-  isPublicEntrypoint,
   isSamePath,
   matchFileToArchitectureModule,
   normalizeResolvedPath,
@@ -19,13 +18,14 @@ export default {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Enforce module import boundaries and public entrypoint imports',
+      description: 'Enforce module import boundaries and configured entrypoint imports',
       recommended: false,
     },
     schema: [],
     messages: {
       notAllowed: 'Import denied: module {{from}} cannot import module {{to}}.',
-      nonEntrypoint: 'Import denied: cross-module imports must target index.ts or types.ts.',
+      nonEntrypoint:
+        'Import denied: cross-module imports must target a configured module entrypoint (offending import: {{specifier}}).',
       namespaceLocalForbidden:
         'Import denied: local cross-module namespace imports are not allowed.',
       tooDeep: 'Import denied: same-module imports can only go one level deeper.',
@@ -107,7 +107,7 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (isShallowRelativeEntrypoint(specifier, targetFile)) return
+  if (isShallowRelativeEntrypoint(specifier, targetFile, importee.policy)) return
 
   if (!allowsImport(importer.policy, importee.matcher)) {
     context.report({
@@ -118,8 +118,12 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
     return
   }
 
-  if (isPublicEntrypoint(targetFile)) return
-  context.report({ node, messageId: 'nonEntrypoint' })
+  if (isAllowedModuleEntrypoint(targetFile, importee.policy)) return
+  context.report({
+    node,
+    messageId: 'nonEntrypoint',
+    data: { specifier },
+  })
 }
 
 function isLocalNamespaceImport(
@@ -129,10 +133,20 @@ function isLocalNamespaceImport(
   return node.specifiers.some((specifier) => specifier.type === 'ImportNamespaceSpecifier')
 }
 
-function isShallowRelativeEntrypoint(specifier: string, targetFile: string): boolean {
+function isShallowRelativeEntrypoint(
+  specifier: string,
+  targetFile: string,
+  policy: { entrypoints: string[] },
+): boolean {
   return (
-    !isRelativeTooDeep(specifier) && specifier.startsWith('./') && isPublicEntrypoint(targetFile)
+    !isRelativeTooDeep(specifier) &&
+    specifier.startsWith('./') &&
+    isAllowedModuleEntrypoint(targetFile, policy)
   )
+}
+
+function isAllowedModuleEntrypoint(targetFile: string, policy: { entrypoints: string[] }): boolean {
+  return policy.entrypoints.includes(node_path.basename(targetFile))
 }
 
 interface EdgeCheckOptions {
@@ -190,5 +204,13 @@ function isRelativeTooDeep(specifier: string): boolean {
 }
 
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
-  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
+  if (policy.imports.includes('*')) return true
+  return policy.imports.some((pattern) => importPatternMatches(pattern, targetMatcher))
+}
+
+function importPatternMatches(pattern: string, target: string): boolean {
+  const patternSegs = pattern.split('/').filter(Boolean)
+  const targetSegs = target.split('/').filter(Boolean)
+  if (patternSegs.length !== targetSegs.length) return false
+  return patternSegs.every((seg, i) => seg === '*' || seg === targetSegs[i])
 }
