@@ -17,6 +17,7 @@ test('full config enables all documented rules', () => {
   expect(unslop.configs).toHaveProperty('full.rules.unslop/no-special-unicode', 'error')
   expect(unslop.configs).toHaveProperty('full.rules.unslop/no-unicode-escape', 'error')
   expect(unslop.configs).toHaveProperty('full.rules.unslop/import-control', 'error')
+  expect(unslop.configs).toHaveProperty('full.rules.unslop/no-whitebox-testing', 'error')
   expect(unslop.configs).toHaveProperty('full.rules.unslop/export-control', 'error')
   expect(unslop.configs).toHaveProperty('full.rules.unslop/no-false-sharing', 'error')
   expect(unslop.configs).toHaveProperty('full.rules.unslop/no-single-use-constants', 'error')

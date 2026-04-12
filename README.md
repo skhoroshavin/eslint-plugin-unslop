@@ -42,11 +42,12 @@ export default [
 ]
 ```
 
-Architecture rules (`import-control`, `export-control`, `no-false-sharing`, `no-single-use-constants`) require a reachable `tsconfig.json`. Set `compilerOptions.rootDir`, and if you use aliases, configure `compilerOptions.paths`.
+Architecture rules (`import-control`, `no-whitebox-testing`, `export-control`, `no-false-sharing`, `no-single-use-constants`) require a reachable `tsconfig.json`. Set `compilerOptions.rootDir`, and if you use aliases, configure `compilerOptions.paths`.
 
 | Rule                             | What it does                                                           |
 | -------------------------------- | ---------------------------------------------------------------------- |
 | `unslop/import-control`          | Enforces module boundaries and forbids local namespace imports         |
+| `unslop/no-whitebox-testing`     | Keeps tests on module entrypoints instead of same-folder internals     |
 | `unslop/export-control`          | Restricts export patterns and forbids `export *` in module entrypoints |
 | `unslop/no-false-sharing`        | Flags shared entrypoint symbols with fewer than two consumer groups    |
 | `unslop/no-single-use-constants` | Flags module-scope constants used once or never across the project     |
@@ -71,6 +72,7 @@ All architecture rules read from `settings.unslop.architecture`. Each key is a m
 {
   imports?: string[]  // module matchers this module may import from; '*' allows all
   exports?: string[]  // regex patterns symbols exported from index.ts/types.ts must match
+  entrypoints?: string[] // public files allowed for external and test imports
   shared?: boolean    // marks module as shared; enables no-false-sharing
 }
 ```
@@ -91,6 +93,12 @@ Deny-by-default for cross-module imports, so forgetting to declare a dependency 
 - files that don't match any declared module are denied (fail-closed, not fail-silently)
 
 Alias imports are resolved via `compilerOptions.paths` from `tsconfig.json`.
+
+### `unslop/no-whitebox-testing`
+
+Keeps test files black-boxed. When a recognized test file lives beside a module's implementation, it must import that module through its public entrypoint (`.`, `./index`, or a configured `entrypoints` file) instead of reaching into sibling files like `./model.ts`.
+
+This rule only checks recognized test filenames (`*.test.*`, `*.spec.*`, `*.*-test.*`, `*.*-spec.*`). Child submodule imports and cross-module imports are left to `unslop/import-control`.
 
 ### `unslop/export-control`
 
