@@ -90,6 +90,18 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 - **WHEN** importer module policy does not include target module matcher in `imports`, and the import is not a shallow relative entrypoint import
 - **THEN** `unslop/import-control` MUST report an error
 
+#### Scenario: Wildcard import allowlist pattern matches explicitly-named sub-module
+
+- **WHEN** importer module policy includes a wildcard pattern such as `"parent/*"` in `imports`
+- **AND** the import target is matched to an explicitly-named module with matcher `"parent/child"` (because an exact definition exists and takes precedence)
+- **THEN** `unslop/import-control` MUST allow the import
+
+#### Scenario: Wildcard import allowlist pattern does not match deeper explicitly-named sub-module
+
+- **WHEN** importer module policy includes a wildcard pattern such as `"parent/*"` in `imports`
+- **AND** the import target is matched to a deeper explicitly-named module with matcher `"parent/child/sub"` (three segments vs two)
+- **THEN** `unslop/import-control` MUST report an error, because `"parent/*"` covers exactly one wildcard segment
+
 #### Scenario: Unmatched module edge
 
 - **WHEN** either importer file or import target file does not match any architecture module key

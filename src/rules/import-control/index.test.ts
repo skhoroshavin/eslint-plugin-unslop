@@ -361,6 +361,47 @@ scenario('exact module matcher takes precedence over wildcard matcher', rule, {
   code: "import { x } from '../../models/user/index.ts'",
 })
 
+scenario('wildcard import allowlist pattern allows import from explicitly-named sub-module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/services/api/index.ts' },
+    { path: 'src/plugins/llm/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'services/*': { imports: ['plugins/*'] },
+        'plugins/llm': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/services/api/index.ts',
+  code: "import { LLM } from '../../plugins/llm/index.ts'",
+})
+
+scenario(
+  'wildcard import allowlist pattern does not allow import from deeper explicitly-named sub-module',
+  rule,
+  {
+    files: [
+      TSCONFIG_WITH_ROOT_DIR,
+      { path: 'src/services/api/index.ts' },
+      { path: 'src/plugins/llm/internal/index.ts' },
+    ],
+    settings: {
+      unslop: {
+        architecture: {
+          'services/*': { imports: ['plugins/*'] },
+          'plugins/llm/internal': { imports: [] },
+        },
+      },
+    },
+    filename: 'src/services/api/index.ts',
+    code: "import { x } from '../../plugins/llm/internal/index.ts'",
+    errors: [{ messageId: 'notAllowed' }],
+  },
+)
+
 // Windows backslash path normalization is exercised by architecture-policy internals
 // but cannot be triggered through context.filename on non-Windows platforms.
 // Covered at the unit level by normalizePath() behavior; no e2e scenario possible here.

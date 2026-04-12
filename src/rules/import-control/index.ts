@@ -204,5 +204,13 @@ function isRelativeTooDeep(specifier: string): boolean {
 }
 
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
-  return policy.imports.includes('*') || policy.imports.includes(targetMatcher)
+  if (policy.imports.includes('*')) return true
+  return policy.imports.some((pattern) => importPatternMatches(pattern, targetMatcher))
+}
+
+function importPatternMatches(pattern: string, target: string): boolean {
+  const patternSegs = pattern.split('/').filter(Boolean)
+  const targetSegs = target.split('/').filter(Boolean)
+  if (patternSegs.length !== targetSegs.length) return false
+  return patternSegs.every((seg, i) => seg === '*' || seg === targetSegs[i])
 }
