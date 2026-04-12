@@ -77,7 +77,7 @@ function reportUnsharedSymbols(
   for (const symbol of exportedSymbols) {
     const consumerGroups = consumerGroupsBySymbol.get(symbol.exportedName)
     if (consumerGroups === undefined) continue
-    if (consumerGroups.size >= MIN_CONSUMER_GROUPS) continue
+    if (consumerGroups.size >= 2) continue
     context.report({
       node,
       messageId: 'notTrulyShared',
@@ -394,5 +394,3 @@ interface ExportedSymbolTarget {
 type RuleArchitecturePolicy = NonNullable<ReturnType<typeof getArchitectureRuleState>>['policy']
 
 type ConsumerKind = 'internal' | 'public'
-
-const MIN_CONSUMER_GROUPS = 2

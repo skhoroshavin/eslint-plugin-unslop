@@ -29,6 +29,7 @@ const full: Linter.Config = {
     'unslop/no-special-unicode': 'error',
     'unslop/no-unicode-escape': 'error',
     'unslop/import-control': 'error',
+    'unslop/no-whitebox-testing': 'error',
     'unslop/export-control': 'error',
     'unslop/no-false-sharing': 'error',
     'unslop/no-single-use-constants': 'error',
