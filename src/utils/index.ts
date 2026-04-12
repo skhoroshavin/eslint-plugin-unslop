@@ -12,4 +12,7 @@ export {
   resolveImportTarget,
 } from './tsconfig-resolution.js'
 
+export { getTypeScriptProjectContext, isFileInProject } from './ts-program.js'
+export type { ProjectContext } from './ts-program.js'
+
 export { getDeclarationNamesFromExport } from './export-symbols.js'

@@ -2,15 +2,11 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import {
-  getRelativePath,
-  getProjectContext,
-  isFileInProject,
-  normalizePath,
-  trimSlashes,
-} from './tsconfig-resolution.js'
+import { getTypeScriptProjectContext, isFileInProject } from './ts-program.js'
 
-import type { ProjectContext } from './tsconfig-resolution.js'
+import type { ProjectContext } from './ts-program.js'
+
+import { getRelativePath, normalizePath, trimSlashes } from './tsconfig-resolution.js'
 
 export function getArchitectureRuleState(
   context: Rule.RuleContext,
@@ -67,7 +63,7 @@ function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy |
   const modules = parseArchitectureModules(architecture)
   if (modules.length === 0) return undefined
 
-  const projectContext = getProjectContext(context.filename)
+  const projectContext = getTypeScriptProjectContext(context.filename)
   if (projectContext === undefined) {
     warnMissingTsconfig(context.filename)
     return undefined

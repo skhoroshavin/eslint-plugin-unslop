@@ -31,6 +31,7 @@ const full: Linter.Config = {
     'unslop/import-control': 'error',
     'unslop/export-control': 'error',
     'unslop/no-false-sharing': 'error',
+    'unslop/no-single-use-constants': 'error',
     'unslop/read-friendly-order': 'error',
   },
 }
