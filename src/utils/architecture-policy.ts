@@ -103,8 +103,14 @@ function parseModulePolicy(rawPolicy: unknown): ArchitectureModulePolicy | undef
   if (!isRecord(rawPolicy)) return undefined
   const imports = readStringList(rawPolicy.imports)
   const exports = readStringList(rawPolicy.exports)
+  const entrypoints = readEntrypoints(rawPolicy.entrypoints)
   const shared = rawPolicy.shared === true
-  return { imports, exports, shared }
+  return { imports, exports, entrypoints, shared }
+}
+
+function readEntrypoints(value: unknown): string[] {
+  const configured = readStringList(value)
+  return configured.length > 0 ? configured : ['index.ts']
 }
 
 function readStringList(value: unknown): string[] {
@@ -141,7 +147,7 @@ function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
   return {
     matcher: key,
     instance: key,
-    policy: { imports: [], exports: [], shared: false },
+    policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
     order: 0,
   }
 }
@@ -248,6 +254,7 @@ interface MatchedArchitectureModule {
 interface ArchitectureModulePolicy {
   imports: string[]
   exports: string[]
+  entrypoints: string[]
   shared: boolean
 }
 

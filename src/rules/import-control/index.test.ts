@@ -17,23 +17,45 @@ scenario('cross-module import declared in the allowlist is allowed', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/service.ts' },
-    { path: 'src/models/user/index.ts' },
+    { path: 'src/models/user/public.ts' },
   ],
   settings: {
     unslop: {
       architecture: {
         'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
+        'models/*': { imports: [], entrypoints: ['public.ts'] },
       },
     },
   },
   filename: 'src/repository/user/service.ts',
-  code: "import { UserModel } from '../../models/user/index.ts'",
+  code: "import { UserModel } from '../../models/user/public.ts'",
 })
 
-scenario('cross-module alias import to entrypoint declared in the allowlist is allowed', rule, {
+scenario(
+  'cross-module alias import to configured entrypoint declared in the allowlist is allowed',
+  rule,
+  {
+    files: [
+      TSCONFIG_WITH_ALIAS,
+      { path: 'src/repository/user/service.ts' },
+      { path: 'src/models/user/public.ts' },
+    ],
+    settings: {
+      unslop: {
+        architecture: {
+          'repository/*': { imports: ['models/*'] },
+          'models/*': { imports: [], entrypoints: ['public.ts'] },
+        },
+      },
+    },
+    filename: 'src/repository/user/service.ts',
+    code: "import { UserModel } from '@/models/user/public.ts'",
+  },
+)
+
+scenario('cross-module import to configured module defaults to index entrypoint', rule, {
   files: [
-    TSCONFIG_WITH_ALIAS,
+    TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/service.ts' },
     { path: 'src/models/user/index.ts' },
   ],
@@ -46,7 +68,7 @@ scenario('cross-module alias import to entrypoint declared in the allowlist is a
     },
   },
   filename: 'src/repository/user/service.ts',
-  code: "import { UserModel } from '@/models/user/index.ts'",
+  code: "import { UserModel } from '../../models/user/index.ts'",
 })
 
 scenario('cross-module import not declared in the allowlist is reported', rule, {
@@ -68,41 +90,47 @@ scenario('cross-module import not declared in the allowlist is reported', rule, 
   errors: [{ messageId: 'notAllowed' }],
 })
 
-scenario('cross-module import targeting an internal non-entrypoint file is reported', rule, {
+scenario('cross-module import targets internal file outside configured entrypoints', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/public.ts' },
     { path: 'src/models/user/internal.ts' },
   ],
   settings: {
     unslop: {
       architecture: {
         'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
+        'models/*': { imports: [], entrypoints: ['public.ts'] },
       },
     },
   },
   filename: 'src/repository/user/service.ts',
   code: "import { hidden } from '../../models/user/internal.ts'",
-  errors: [{ messageId: 'nonEntrypoint' }],
+  errors: [
+    {
+      messageId: 'nonEntrypoint',
+      data: { specifier: '../../models/user/internal.ts' },
+    },
+  ],
 })
 
 scenario('local cross-module namespace import is rejected', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
     { path: 'src/repository/user/service.ts' },
-    { path: 'src/models/user/index.ts' },
+    { path: 'src/models/user/public.ts' },
   ],
   settings: {
     unslop: {
       architecture: {
         'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [] },
+        'models/*': { imports: [], entrypoints: ['public.ts'] },
       },
     },
   },
   filename: 'src/repository/user/service.ts',
-  code: "import * as UserModels from '../../models/user/index.ts'",
+  code: "import * as UserModels from '../../models/user/public.ts'",
   errors: [{ messageId: 'namespaceLocalForbidden' }],
 })
 
@@ -120,36 +148,107 @@ scenario('external dependency namespace import is allowed', rule, {
 })
 
 scenario(
-  'shallow relative import to a direct child module entrypoint is implicitly allowed',
+  'shallow relative import to child module configured entrypoint is implicitly allowed',
   rule,
   {
-    files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/index.ts' }],
+    files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/public.ts' }],
     settings: {
       unslop: {
         architecture: {
           'index.ts': { imports: [] },
-          'rules/index.ts': { imports: [] },
+          'rules/public.ts': { imports: [], entrypoints: ['public.ts'] },
         },
       },
     },
     filename: 'src/index.ts',
-    code: "import rules from './rules/index.ts'",
+    code: "import rules from './rules/public.ts'",
   },
 )
 
-scenario('shallow relative import to a direct child non-entrypoint is reported', rule, {
-  files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/internal.ts' }],
+scenario('shallow relative import to child module default entrypoint is implicitly allowed', rule, {
+  files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/index.ts' }],
   settings: {
     unslop: {
       architecture: {
         'index.ts': { imports: [] },
-        rules: { imports: [] },
+        'rules/index.ts': { imports: [] },
       },
     },
   },
   filename: 'src/index.ts',
-  code: "import x from './rules/internal.ts'",
-  errors: [{ messageId: 'notAllowed' }],
+  code: "import rules from './rules/index.ts'",
+})
+
+scenario(
+  'shallow relative import to child module non-entrypoint applies normal boundary checks',
+  rule,
+  {
+    files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/index.ts' }, { path: 'src/rules/internal.ts' }],
+    settings: {
+      unslop: {
+        architecture: {
+          'index.ts': { imports: [] },
+          rules: { imports: [] },
+        },
+      },
+    },
+    filename: 'src/index.ts',
+    code: "import x from './rules/internal.ts'",
+    errors: [{ messageId: 'notAllowed' }],
+  },
+)
+
+scenario('cross-module alias import using equivalent index specifier variant is allowed', rule, {
+  files: [
+    TSCONFIG_WITH_ALIAS,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/models/user/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import { UserModel } from '@/models/user'",
+})
+
+scenario('cross-module import to anonymous module allows only index entrypoint candidate', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/unknown/public/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['unknown/public'] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import { value } from '../../unknown/public/index.ts'",
+})
+
+scenario('cross-module import to anonymous module non-index entrypoint is reported', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/repository/user/service.ts' },
+    { path: 'src/unknown/public/types.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['unknown/public'] },
+      },
+    },
+  },
+  filename: 'src/repository/user/service.ts',
+  code: "import { value } from '../../unknown/public/types.ts'",
+  errors: [{ messageId: 'nonEntrypoint' }],
 })
 
 scenario('same-module relative import one level deep is allowed', rule, {
