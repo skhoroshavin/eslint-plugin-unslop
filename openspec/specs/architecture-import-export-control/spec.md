@@ -2,7 +2,7 @@
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings
 
-The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, and `shared`. A module with `shared: true` is subject to false-sharing enforcement by `unslop/no-false-sharing`. The `settings.unslop.sourceRoot` setting is removed; source root is derived from `tsconfig.json`.
+The plugin SHALL read architecture policy from `settings.unslop.architecture`, where module policies are keyed by module matcher and each module MAY define `imports`, `exports`, `shared`, and `entrypoints`. The `entrypoints` field MUST be a list of strings and MUST default to `['index.ts']` when omitted for a configured module. A module with `shared: true` is subject to false-sharing enforcement by `unslop/no-false-sharing`. The `settings.unslop.sourceRoot` setting is removed; source root is derived from `tsconfig.json`.
 
 #### Scenario: Architecture settings are present
 
@@ -13,6 +13,11 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 - **WHEN** architecture rules run without `settings.unslop.architecture`
 - **THEN** rules MUST fail gracefully without throwing
+
+#### Scenario: Configured module omits entrypoints
+
+- **WHEN** a module policy omits `entrypoints`
+- **THEN** architecture policy parsing MUST treat that module's allowed entrypoints as `['index.ts']`
 
 #### Scenario: Module marked shared is subject to false-sharing enforcement
 
@@ -114,35 +119,55 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`, w
 
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 
-`unslop/import-control` MUST allow cross-module imports only when the import target resolves to `index.ts` or `types.ts` in the target module. Import target resolution MUST use the TypeScript semantic project for the linted file rather than handwritten alias or extension probing.
+`unslop/import-control` MUST allow cross-module imports only when the import target resolves to a file listed in the target module's configured `entrypoints`. If the target module is configured but omits `entrypoints`, the allowed set MUST be `['index.ts']`. If importer or import target is unmatched by architecture config and treated as an anonymous module, allowed cross-module entrypoints for that anonymous module MUST be `['index.ts']`. Import target resolution MUST use the TypeScript semantic project for the linted file rather than handwritten alias or extension probing.
 
-#### Scenario: Cross-module import targets entrypoint via explicit policy
+#### Scenario: Cross-module import targets configured entrypoint via explicit policy
 
-- **WHEN** a cross-module import resolves to `index.ts` or `types.ts` and the importer module policy explicitly allows the target module in `imports`
+- **WHEN** a cross-module import resolves to a file listed in the target module's `entrypoints` and the importer module policy explicitly allows the target module in `imports`
 - **THEN** `unslop/import-control` MUST allow the import
 
-#### Scenario: Cross-module alias import targets entrypoint via explicit policy
+#### Scenario: Cross-module alias import targets configured entrypoint via explicit policy
 
-- **WHEN** a cross-module import uses any tsconfig-configured alias path and resolves to `index.ts` or `types.ts`, and the importer module policy explicitly allows the target module in `imports`
+- **WHEN** a cross-module import uses any tsconfig-configured alias path and resolves to a file listed in the target module's `entrypoints`, and the importer module policy explicitly allows the target module in `imports`
+- **THEN** `unslop/import-control` MUST allow the import
+
+#### Scenario: Cross-module import to configured module defaults to index entrypoint
+
+- **WHEN** a cross-module import resolves to `index.ts` in a configured target module that does not define `entrypoints`, and the importer module policy explicitly allows the target module in `imports`
 - **THEN** `unslop/import-control` MUST allow the import
 
 #### Scenario: Cross-module import targets internal file
 
-- **WHEN** a cross-module import resolves to any file other than `index.ts` or `types.ts`
+- **WHEN** a cross-module import resolves to any file not listed in the target module's allowed `entrypoints`
+- **THEN** `unslop/import-control` MUST report an error
+
+#### Scenario: Cross-module import to anonymous module allows only index entrypoint
+
+- **WHEN** importer and target are treated as anonymous modules and a cross-module import resolves to `index.ts`
+- **THEN** `unslop/import-control` MUST treat the target as an allowed entrypoint candidate and continue normal boundary checks
+
+#### Scenario: Cross-module import to anonymous module non-index entrypoint
+
+- **WHEN** importer and target are treated as anonymous modules and a cross-module import resolves to a file other than `index.ts`
 - **THEN** `unslop/import-control` MUST report an error
 
 ### Requirement: Import control SHALL implicitly allow shallow relative imports to direct child entrypoints
 
-`unslop/import-control` MUST allow a `./`-relative import that is at most one level deep and resolves to a public entrypoint (`index.ts` or `types.ts`), without requiring an explicit `imports` policy entry. This allows a module to import the public entrypoint of any direct child sub-module without boilerplate configuration.
+`unslop/import-control` MUST allow a `./`-relative import that is at most one level deep and resolves to an allowed child-module entrypoint without requiring an explicit `imports` policy entry. For a configured child module, the allowed set is that module's `entrypoints` (defaulting to `['index.ts']` when omitted). For an unmatched child module treated as anonymous, the allowed set is `['index.ts']`.
 
-#### Scenario: Shallow relative import to child module entrypoint
+#### Scenario: Shallow relative import to child module configured entrypoint
 
-- **WHEN** a file uses a `./`-relative import that is one level deep and resolves to `index.ts` or `types.ts`
+- **WHEN** a file uses a `./`-relative import that is one level deep and resolves to a file listed in the child module's allowed `entrypoints`
+- **THEN** `unslop/import-control` MUST allow the import regardless of `imports` policy
+
+#### Scenario: Shallow relative import to child module default entrypoint
+
+- **WHEN** a file uses a `./`-relative import that is one level deep and resolves to `index.ts` in a configured child module with no explicit `entrypoints`
 - **THEN** `unslop/import-control` MUST allow the import regardless of `imports` policy
 
 #### Scenario: Shallow relative import to child module non-entrypoint
 
-- **WHEN** a file uses a `./`-relative import that is one level deep but resolves to a file other than `index.ts` or `types.ts`
+- **WHEN** a file uses a `./`-relative import that is one level deep but resolves to a file not listed in the child module's allowed `entrypoints`
 - **THEN** `unslop/import-control` MUST apply normal boundary checks
 
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
