@@ -1,7 +1,7 @@
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: read-friendly-order-autofix/spec.md
+// spec: read-friendly-order/spec.md
 
 // ─── Top-level ordering ───────────────────────────────────────────────────────
 

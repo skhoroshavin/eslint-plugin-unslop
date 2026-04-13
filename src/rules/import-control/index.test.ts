@@ -1,7 +1,7 @@
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: architecture-import-export-control/spec.md
+// spec: import-control/spec.md
 
 const TSCONFIG_WITH_ROOT_DIR = {
   path: 'tsconfig.json',

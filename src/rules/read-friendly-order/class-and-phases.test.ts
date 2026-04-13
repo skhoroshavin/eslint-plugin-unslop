@@ -1,7 +1,7 @@
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: read-friendly-order-autofix/spec.md
+// spec: read-friendly-order/spec.md
 // Class member ordering, test phase ordering, and autofix idempotency.
 // Top-level and TypeScript ordering scenarios are in index.test.ts.
 

@@ -117,6 +117,15 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 - In `create(context)`, return `{}` early when prerequisites are absent.
 - Register new rules in `src/rules/index.ts` and wire into configs when intended.
 
+## Module Boundaries
+
+- Each rule lives in `src/rules/<rule>/` with a public `index.ts` entrypoint.
+- Non-test files in a rule folder MUST only import from the same folder, `src/utils/`, Node built-ins, or external packages. Cross-rule imports are forbidden.
+- Tests MUST import the rule through its public `index.ts` and treat it as a black box.
+- `src/utils/` MUST NOT import from `src/rules/`.
+- Architecture boundaries are enforced at lint time via `settings.unslop.architecture` using allowlist-style `imports`/`exports` policies. `npm run verify` covers this through ESLint.
+- Shared modules (e.g., `utils`) are declared with `shared: true` in settings; `unslop/no-false-sharing` is enabled without rule-level options.
+
 ## Error Handling And Resilience
 
 - Favor graceful fallbacks over throwing during lint execution.
@@ -124,6 +133,15 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 - Guard nullish values before dereferencing.
 - Do not assume files exist; check first.
 - For "not applicable" helper outcomes, return `undefined` or another established local sentinel consistently.
+
+## TSConfig Resolution
+
+- The plugin locates the nearest `tsconfig.json` per linted file using TypeScript config discovery APIs, including full `extends` resolution.
+- The resolved config provides project root, source root, compiler options, and a shared semantic project context for cross-file analysis.
+- `compilerOptions.paths` and `baseUrl` participate through TypeScript's own module resolver — no separate paths-matcher implementation.
+- A specifier is local when TypeScript resolves it to a file inside the project; otherwise it is external.
+- The plugin caches one semantic project context per unique `tsconfig.json` path per lint run.
+- Rules that need a semantic project become no-ops when no `tsconfig.json` is found or the file is outside the project.
 
 ## Filesystem And Path Practices
 
@@ -134,15 +152,32 @@ Guidance for coding agents working in `eslint-plugin-unslop`.
 
 ## Testing Conventions
 
-The full test specification is at `openspec/specs/test-conventions/spec.md`. Read it before writing or modifying any test. The rules below are a summary; the spec is authoritative.
+This section is the single authoritative reference for test conventions.
 
-- All tests are end-to-end through `RuleTester`. No unit tests of internal helpers.
+- All tests are end-to-end through `RuleTester`. No unit tests of internal helpers. Internal helper behavior must be covered through rule-level e2e scenarios.
 - Every test case uses `scenario()` from `src/utils/test-fixtures/index.ts` — the one and only shared test utility.
-- Every test case is self-contained: all inputs (code, settings, file layout) are written inline in the call, no scrolling required.
+- **Do not add exports to `src/utils/test-fixtures/index.ts`.** A second export requires justification that it is needed by 3+ test files and cannot be composed from `scenario()`.
+- Every test case is self-contained: all inputs (code, settings, file layout) are written inline in the `scenario()` call, no scrolling required. Keep values inline unless shared by 3+ scenarios in the same file.
 - `scenario.todo('description')` marks a spec scenario not yet covered by an implementation.
-- `messageId` assertions are preferred over raw `message` strings.
-- Each named scenario in `openspec/specs/<rule>/spec.md` must have a corresponding `scenario()` call.
-- **Do not add exports to `src/utils/test-fixtures/index.ts`.** Adding a second export requires updating the spec first.
+- `messageId` assertions are preferred over raw `message` strings (use rendered `message` only for inherently dynamic text).
+- Each named scenario in `openspec/specs/<rule>/spec.md` must have a corresponding `scenario()` call with a description that mirrors the spec scenario name.
+- Test descriptions must read as behavior statements (e.g., `cross-module import not declared in allowlist is reported`), not labels like `test 1`.
+- Do not hide setup or assertions behind lifecycle-managed fixtures or custom assertion wrappers. Use `scenario({ files: [...] })` for filesystem layout; avoid `beforeEach`/`afterEach`/`afterAll` for temp fixtures.
+- `scenario(description, rule, options)` accepts: `files`, `typescript`, `settings`, `code`, `filename`, `errors`, `output`.
+  - Valid case: only `code` needed.
+  - Invalid with autofix: `errors` + full expected `output`.
+  - Invalid without autofix: `errors` + `output: null`.
+  - Filesystem-scanning rule: `files` + `filename` (resolved relative to temp dir).
+  - TypeScript syntax: set `typescript: true` (only when code uses TS syntax, not just because the rule is written in TS).
+  - Architecture rules: provide `settings.unslop` inline.
+
+## Release Process
+
+- Releases are triggered manually via `workflow_dispatch` in GitHub Actions with a `bump` input (`patch`, `minor`, or `major`).
+- The workflow bumps `package.json` and `package-lock.json`, commits to `main`, creates an annotated tag (e.g., `v0.3.0`), then runs `npm run verify` and `npm run test` before publishing.
+- If verify or tests fail, the publish is aborted.
+- Publishing uses OIDC-based npm authentication with signed provenance. A GitHub release with auto-generated notes is created after successful publish.
+- Branch protection grants bypass to `github-actions[bot]` for the version bump commit; human direct pushes to `main` are rejected.
 
 ## Recommended Change Workflow For Agents
 

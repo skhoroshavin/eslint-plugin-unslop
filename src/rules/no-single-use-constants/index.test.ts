@@ -2,7 +2,6 @@ import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
 // spec: no-single-use-constants/spec.md
-// spec: tsconfig-resolution/spec.md
 
 const TSCONFIG = {
   path: 'tsconfig.json',

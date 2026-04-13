@@ -4,7 +4,7 @@
  * Exports exactly ONE thing: scenario()
  *
  * Do NOT add exports. If you think you need a second export,
- * update openspec/specs/test-conventions/spec.md first.
+ * update the Testing Conventions section in AGENTS.md first.
  */
 import node_fs from 'node:fs'
 import node_os from 'node:os'
