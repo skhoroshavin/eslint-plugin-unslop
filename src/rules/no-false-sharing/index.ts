@@ -7,6 +7,7 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 import ts from 'typescript'
 
 import {
+  formatProjectContextError,
   getArchitectureRuleState,
   getDeclarationNamesFromExport,
   getRelativePath,
@@ -27,6 +28,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       notTrulyShared:
         'symbol "{{symbol}}" has {{consumerCount}} consumer group(s){{consumerGroup}} -> Must be used by 2+ entities',
     },
@@ -34,6 +36,17 @@ export default {
   create(context) {
     const state = buildRuleState(context)
     if (state === undefined) return {}
+    if (state.kind === 'context-error') {
+      return {
+        Program(node) {
+          context.report({
+            node,
+            messageId: 'configurationError',
+            data: { details: state.details },
+          })
+        },
+      }
+    }
 
     return {
       Program(node) {
@@ -43,20 +56,37 @@ export default {
   },
 } satisfies Rule.RuleModule
 
-function buildRuleState(context: Rule.RuleContext): SymbolAnalysisOptions | undefined {
+function buildRuleState(context: Rule.RuleContext): RuleState | undefined {
+  if (!isPublicEntrypoint(context.filename)) return undefined
+
   const state = getArchitectureRuleState(context)
-  if (state === undefined || !isPublicEntrypoint(state.filename)) return undefined
+  if (state.kind === 'context-error') {
+    return {
+      kind: 'context-error',
+      details: formatProjectContextError(state.error),
+    }
+  }
+
+  if (state.kind !== 'active') return undefined
   if (!state.moduleMatch.policy.shared) return undefined
 
   const sourceRoot = state.policy.projectContext.sourceRoot
   if (sourceRoot === undefined) return undefined
 
   return {
+    kind: 'active',
     entrypointFile: state.filename,
     sourceDir: node_path.join(state.policy.projectContext.projectRoot, sourceRoot),
     policy: state.policy,
     sharedModuleInstance: state.moduleMatch.instance,
   }
+}
+
+type RuleState = SymbolAnalysisOptions | ContextErrorState
+
+interface ContextErrorState {
+  kind: 'context-error'
+  details: string
 }
 
 function reportUnsharedSymbols(
@@ -154,27 +184,6 @@ function findProjectSourceFile(program: ts.Program, targetFile: string): ts.Sour
   return undefined
 }
 
-function getCanonicalSymbol(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
-  if ((symbol.flags & ts.SymbolFlags.Alias) === 0) return symbol
-  return checker.getAliasedSymbol(symbol)
-}
-
-function getCanonicalSymbolKey(symbol: ts.Symbol): string | undefined {
-  const declaration = pickPrimaryDeclaration(symbol)
-  if (declaration === undefined) return undefined
-  const sourceFilePath = normalizeResolvedPath(declaration.getSourceFile().fileName)
-  return `${sourceFilePath}:${declaration.pos}:${declaration.end}:${symbol.getName()}`
-}
-
-function pickPrimaryDeclaration(symbol: ts.Symbol): ts.Declaration | undefined {
-  const declarations = symbol.declarations
-  if (declarations === undefined || declarations.length === 0) return undefined
-  for (const declaration of declarations) {
-    if (!declaration.getSourceFile().isDeclarationFile) return declaration
-  }
-  return declarations[0]
-}
-
 function getBackingFilePath(symbol: ts.Symbol, entrypointFile: string): string | undefined {
   const declaration = pickPrimaryDeclaration(symbol)
   if (declaration === undefined) return undefined
@@ -235,6 +244,18 @@ function isProjectSourceFile(filePath: string, options: ConsumerGroupOptions): b
   if (isSamePath(filePath, options.entrypointFile)) return false
   if (!isInsidePath(options.sourceDir, filePath)) return false
   return /\.[jt]sx?$/.test(filePath)
+}
+
+interface ConsumerGroupOptions extends SymbolAnalysisOptions {
+  exportedSymbols: ExportedSymbolTarget[]
+}
+
+interface SymbolAnalysisOptions {
+  kind: 'active'
+  entrypointFile: string
+  sourceDir: string
+  policy: RuleArchitecturePolicy
+  sharedModuleInstance: string
 }
 
 function collectImportedSymbolUsages(
@@ -316,6 +337,32 @@ function addIdentifierUsage(
   usages.push({ canonicalKey, targetFile })
 }
 
+type RuleArchitecturePolicy = Extract<
+  ReturnType<typeof getArchitectureRuleState>,
+  { kind: 'active' }
+>['policy']
+
+function getCanonicalSymbol(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
+  if ((symbol.flags & ts.SymbolFlags.Alias) === 0) return symbol
+  return checker.getAliasedSymbol(symbol)
+}
+
+function getCanonicalSymbolKey(symbol: ts.Symbol): string | undefined {
+  const declaration = pickPrimaryDeclaration(symbol)
+  if (declaration === undefined) return undefined
+  const sourceFilePath = normalizeResolvedPath(declaration.getSourceFile().fileName)
+  return `${sourceFilePath}:${declaration.pos}:${declaration.end}:${symbol.getName()}`
+}
+
+function pickPrimaryDeclaration(symbol: ts.Symbol): ts.Declaration | undefined {
+  const declarations = symbol.declarations
+  if (declarations === undefined || declarations.length === 0) return undefined
+  for (const declaration of declarations) {
+    if (!declaration.getSourceFile().isDeclarationFile) return declaration
+  }
+  return declarations[0]
+}
+
 function addUsageToConsumerGroups(options: AddUsageOptions): void {
   for (const symbol of options.exportedSymbols) {
     const kind = getConsumerKind(options, symbol)
@@ -340,6 +387,30 @@ function getConsumerKind(
   return undefined
 }
 
+interface AddUsageOptions {
+  usage: SymbolUsage
+  exportedSymbols: ExportedSymbolTarget[]
+  filePath: string
+  sourceDir: string
+  isInternalConsumer: boolean
+  sharedModuleInstance: string
+  bySymbol: Map<string, Set<string>>
+  entrypointFile: string
+}
+
+interface SymbolUsage {
+  canonicalKey: string
+  targetFile: string
+}
+
+interface ExportedSymbolTarget {
+  exportedName: string
+  canonicalKey: string
+  backingFile?: string
+}
+
+type ConsumerKind = 'internal' | 'public'
+
 function getConsumerGroup(importerPath: string, sourceDir: string): string {
   const rel = getRelativePath(sourceDir, importerPath)
   const parts = rel.split('/')
@@ -357,40 +428,3 @@ function getSingleConsumerGroup(groups: Set<string>): string {
   const [single] = [...groups]
   return ` (group: ${single})`
 }
-
-interface SymbolAnalysisOptions {
-  entrypointFile: string
-  sourceDir: string
-  policy: RuleArchitecturePolicy
-  sharedModuleInstance: string
-}
-
-interface ConsumerGroupOptions extends SymbolAnalysisOptions {
-  exportedSymbols: ExportedSymbolTarget[]
-}
-
-interface SymbolUsage {
-  canonicalKey: string
-  targetFile: string
-}
-
-interface AddUsageOptions {
-  usage: SymbolUsage
-  exportedSymbols: ExportedSymbolTarget[]
-  filePath: string
-  sourceDir: string
-  isInternalConsumer: boolean
-  sharedModuleInstance: string
-  bySymbol: Map<string, Set<string>>
-  entrypointFile: string
-}
-
-interface ExportedSymbolTarget {
-  exportedName: string
-  canonicalKey: string
-  backingFile?: string
-}
-
-type RuleArchitecturePolicy = NonNullable<ReturnType<typeof getArchitectureRuleState>>['policy']
-
-type ConsumerKind = 'internal' | 'public'

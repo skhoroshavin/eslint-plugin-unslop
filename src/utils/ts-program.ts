@@ -2,26 +2,106 @@ import node_path from 'node:path'
 
 import ts from 'typescript'
 
-export function getTypeScriptProjectContext(filename: string): ProjectContext | undefined {
-  const tsconfigPath = ts.findConfigFile(
-    node_path.dirname(filename),
-    ts.sys.fileExists,
-    'tsconfig.json',
-  )
-  if (tsconfigPath === undefined) return undefined
+export function getRequiredTypeScriptProjectContext(
+  filename: string,
+): RequiredProjectContextResult {
+  const normalizedFilename = normalizeResolvedPath(filename)
+  const searchRoot = normalizeResolvedPath(node_path.dirname(filename))
+  const tsconfigPath = ts.findConfigFile(searchRoot, ts.sys.fileExists, 'tsconfig.json')
+  if (tsconfigPath === undefined) {
+    return {
+      kind: 'context-error',
+      error: {
+        reason: 'missing-tsconfig',
+        filename: normalizedFilename,
+        searchRoot,
+      },
+    }
+  }
 
-  const resolvedTsconfigPath = node_path.resolve(tsconfigPath)
-  const cached = projectContextCache.get(resolvedTsconfigPath)
-  if (cached !== undefined) return cached
+  const resolvedTsconfigPath = normalizeResolvedPath(tsconfigPath)
+  const loadedContext = loadProjectContext(resolvedTsconfigPath)
+  if (loadedContext.kind !== 'active') {
+    return {
+      kind: 'context-error',
+      error: {
+        reason: 'invalid-tsconfig',
+        filename: normalizedFilename,
+        searchRoot,
+        tsconfigPath: resolvedTsconfigPath,
+      },
+    }
+  }
 
-  const context = parseProjectContext(resolvedTsconfigPath)
-  if (context === undefined) return undefined
-  projectContextCache.set(resolvedTsconfigPath, context)
-  return context
+  if (!isFileInProject(filename, loadedContext.projectContext)) {
+    return {
+      kind: 'context-error',
+      error: {
+        reason: 'file-not-in-project',
+        filename: normalizedFilename,
+        searchRoot,
+        tsconfigPath: resolvedTsconfigPath,
+        projectContext: loadedContext.projectContext,
+      },
+    }
+  }
+
+  return loadedContext
 }
 
-export function isFileInProject(filename: string, context: ProjectContext): boolean {
+export function formatProjectContextError(error: ProjectContextError): string {
+  const prefix = `TypeScript project context unavailable for "${error.filename}".`
+  if (error.reason === 'missing-tsconfig') {
+    return `${prefix} No tsconfig.json found while searching from "${error.searchRoot}".`
+  }
+
+  if (error.reason === 'invalid-tsconfig') {
+    return `${prefix} Discovered tsconfig "${error.tsconfigPath}" could not be loaded.`
+  }
+
+  return `${prefix} Discovered tsconfig "${error.tsconfigPath}" does not include this file.`
+}
+
+function isFileInProject(filename: string, context: ProjectContext): boolean {
   return context.projectFiles.has(normalizeResolvedPath(filename))
+}
+
+export interface ProjectContext {
+  projectRoot: string
+  sourceRoot: string | undefined
+  compilerOptions: ts.CompilerOptions
+  moduleResolutionCache: ts.ModuleResolutionCache
+  program: ts.Program
+  checker: ts.TypeChecker
+  projectFiles: Set<string>
+}
+
+type RequiredProjectContextResult =
+  | { kind: 'active'; projectContext: ProjectContext }
+  | { kind: 'context-error'; error: ProjectContextError }
+
+export interface ProjectContextError {
+  reason: 'missing-tsconfig' | 'invalid-tsconfig' | 'file-not-in-project'
+  filename: string
+  searchRoot: string
+  tsconfigPath?: string
+  projectContext?: ProjectContext
+}
+
+function loadProjectContext(tsconfigPath: string): LoadedProjectContext {
+  const cached = projectContextCache.get(tsconfigPath)
+  if (cached !== undefined) return cached
+
+  const context = parseProjectContext(tsconfigPath)
+  if (context === undefined) {
+    const invalidResult: LoadedProjectContext = { kind: 'invalid-tsconfig' }
+    projectContextCache.set(tsconfigPath, invalidResult)
+    return invalidResult
+  }
+
+  const activeResult: LoadedProjectContext = { kind: 'active', projectContext: context }
+  projectContextCache.set(tsconfigPath, activeResult)
+  return activeResult
 }
 
 function parseProjectContext(tsconfigPath: string): ProjectContext | undefined {
@@ -118,6 +198,12 @@ function normalizeSourceRootCandidate(
   return trimSlashes(relative)
 }
 
+function isChildPath(parent: string, child: string): boolean {
+  const normalizedParent = normalizeResolvedPath(parent)
+  const normalizedChild = normalizeResolvedPath(child)
+  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`)
+}
+
 // --- private path helpers (local copies to avoid circular dependency with tsconfig-resolution) ---
 
 function normalizeResolvedPath(filePath: string): string {
@@ -126,12 +212,6 @@ function normalizeResolvedPath(filePath: string): string {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/')
-}
-
-function isChildPath(parent: string, child: string): boolean {
-  const normalizedParent = normalizeResolvedPath(parent)
-  const normalizedChild = normalizeResolvedPath(child)
-  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`)
 }
 
 function trimSlashes(value: string): string {
@@ -143,14 +223,8 @@ function getCanonicalFileName(pathValue: string): string {
   return pathValue.toLowerCase()
 }
 
-export interface ProjectContext {
-  projectRoot: string
-  sourceRoot: string | undefined
-  compilerOptions: ts.CompilerOptions
-  moduleResolutionCache: ts.ModuleResolutionCache
-  program: ts.Program
-  checker: ts.TypeChecker
-  projectFiles: Set<string>
-}
+const projectContextCache = new Map<string, LoadedProjectContext>()
 
-const projectContextCache = new Map<string, ProjectContext>()
+type LoadedProjectContext =
+  | { kind: 'active'; projectContext: ProjectContext }
+  | { kind: 'invalid-tsconfig' }

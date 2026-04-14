@@ -1,3 +1,5 @@
+import node_path from 'node:path'
+
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
@@ -6,6 +8,12 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 const TSCONFIG = {
   path: 'tsconfig.json',
   content: '{"compilerOptions":{"strict":true,"rootDir":"./src"},"include":["**/*.ts"]}',
+}
+
+const VIRTUAL_CONSTANTS_FILE = '/virtual/unslop/src/constants.ts'
+
+function missingTsconfigMessage(filename: string): string {
+  return `TypeScript project context unavailable for "${filename}". No tsconfig.json found while searching from "${node_path.dirname(filename)}".`
 }
 
 // --- Requirement: no-single-use-constants SHALL report single-use module constants ---
@@ -159,9 +167,28 @@ scenario('alias-based import and use counts as a real use', rule, {
 })
 
 scenario('semantic project unavailable makes rule a no-op', rule, {
-  files: [{ path: 'src/constants.ts', content: 'export const FOO = 1' }],
-  filename: 'src/constants.ts',
+  filename: VIRTUAL_CONSTANTS_FILE,
   code: 'export const FOO = 1',
+  errors: [
+    {
+      messageId: 'configurationError',
+      data: { details: missingTsconfigMessage(VIRTUAL_CONSTANTS_FILE) },
+    },
+  ],
+})
+
+scenario('discovered tsconfig that excludes linted file reports configuration error', rule, {
+  files: [
+    {
+      path: 'src/nested/tsconfig.json',
+      content: '{"compilerOptions":{"rootDir":"."},"include":["support.ts"]}',
+    },
+    { path: 'src/nested/constants.ts', content: 'export const FOO = 1' },
+    { path: 'src/nested/support.ts', content: 'export const SUPPORT = 1' },
+  ],
+  filename: 'src/nested/constants.ts',
+  code: 'export const FOO = 1',
+  errors: [{ messageId: 'configurationError' }],
 })
 
 // --- Requirement: Plugin SHALL read tsconfig.json to resolve project layout ---

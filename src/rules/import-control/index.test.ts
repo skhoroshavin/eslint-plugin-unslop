@@ -1,3 +1,5 @@
+import node_path from 'node:path'
+
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
@@ -11,6 +13,12 @@ const TSCONFIG_WITH_ROOT_DIR = {
 const TSCONFIG_WITH_ALIAS = {
   path: 'tsconfig.json',
   content: '{"compilerOptions":{"rootDir":"./src","baseUrl":".","paths":{"@/*":["src/*"]}}}',
+}
+
+const VIRTUAL_IMPORT_CONTROL_FILE = '/virtual/unslop/src/repository/user/index.ts'
+
+function missingTsconfigMessage(filename: string): string {
+  return `TypeScript project context unavailable for "${filename}". No tsconfig.json found while searching from "${node_path.dirname(filename)}".`
 }
 
 scenario('cross-module import declared in the allowlist is allowed', rule, {
@@ -340,6 +348,49 @@ scenario('semantic project setup failure fails open without reporting', rule, {
   },
   filename: 'src/outside/models/user/index.ts',
   code: "import { createUserRepo } from '../../repository/user/index.ts'",
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('discovered tsconfig that excludes linted file reports configuration error', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/outside/tsconfig.json',
+      content: '{"compilerOptions":{"rootDir":"."},"include":["repository/**/*.ts"]}',
+    },
+    { path: 'src/outside/repository/user/index.ts' },
+    { path: 'src/outside/models/user/index.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: 'src/outside/models/user/index.ts',
+  code: "import { createUserRepo } from '../../repository/user/index.ts'",
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('missing tsconfig reports actionable path context', rule, {
+  settings: {
+    unslop: {
+      architecture: {
+        'repository/*': { imports: ['models/*'] },
+        'models/*': { imports: [] },
+      },
+    },
+  },
+  filename: VIRTUAL_IMPORT_CONTROL_FILE,
+  code: "import { createUserRepo } from '../../models/user/index.ts'",
+  errors: [
+    {
+      messageId: 'configurationError',
+      data: { details: missingTsconfigMessage(VIRTUAL_IMPORT_CONTROL_FILE) },
+    },
+  ],
 })
 
 scenario('exact module matcher takes precedence over wildcard matcher', rule, {

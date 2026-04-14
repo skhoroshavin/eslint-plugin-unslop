@@ -1,3 +1,5 @@
+import node_path from 'node:path'
+
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
@@ -6,6 +8,12 @@ import { scenario } from '../../utils/test-fixtures/index.js'
 const TSCONFIG_WITH_ROOT_DIR = {
   path: 'tsconfig.json',
   content: '{"compilerOptions":{"rootDir":"./src"}}',
+}
+
+const VIRTUAL_TEST_FILE = '/virtual/unslop/src/module/some.test.ts'
+
+function missingTsconfigMessage(filename: string): string {
+  return `TypeScript project context unavailable for "${filename}". No tsconfig.json found while searching from "${node_path.dirname(filename)}".`
 }
 
 scenario('recognized some.test.ts file is checked', rule, {
@@ -300,4 +308,45 @@ scenario('semantic project unavailable', rule, {
   },
   filename: 'src/outside/module/some.test.ts',
   code: "import { model } from './model.ts'",
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('discovered tsconfig that excludes linted test file reports configuration error', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/outside/tsconfig.json',
+      content: '{"compilerOptions":{"rootDir":"."},"include":["support/**/*.ts"]}',
+    },
+    { path: 'src/outside/module/some.test.ts' },
+    { path: 'src/outside/module/model.ts' },
+  ],
+  settings: {
+    unslop: {
+      architecture: {
+        module: { imports: [] },
+      },
+    },
+  },
+  filename: 'src/outside/module/some.test.ts',
+  code: "import { model } from './model.ts'",
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('missing tsconfig reports linted file and search root', rule, {
+  settings: {
+    unslop: {
+      architecture: {
+        module: { imports: [] },
+      },
+    },
+  },
+  filename: VIRTUAL_TEST_FILE,
+  code: "import { model } from './model.ts'",
+  errors: [
+    {
+      messageId: 'configurationError',
+      data: { details: missingTsconfigMessage(VIRTUAL_TEST_FILE) },
+    },
+  ],
 })

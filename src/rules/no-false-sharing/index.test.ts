@@ -1,3 +1,5 @@
+import node_path from 'node:path'
+
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
@@ -17,6 +19,12 @@ const SHARED_SETTINGS = {
       'feature-b/*': { imports: [] },
     },
   },
+}
+
+const VIRTUAL_SHARED_ENTRYPOINT = '/virtual/unslop/src/ui/components/index.ts'
+
+function missingTsconfigMessage(filename: string): string {
+  return `TypeScript project context unavailable for "${filename}". No tsconfig.json found while searching from "${node_path.dirname(filename)}".`
 }
 
 scenario('alias import counts as a symbol consumer', rule, {
@@ -223,6 +231,7 @@ scenario('missing tsconfig for linted file fails gracefully without reporting', 
   settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
   filename: 'src/ui/components/index.ts',
   code: 'export const Button = 1',
+  errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('semantic project setup failure fails open', rule, {
@@ -235,6 +244,38 @@ scenario('semantic project setup failure fails open', rule, {
   settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
   filename: 'src/ui/components/index.ts',
   code: 'export const Button = 1',
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario(
+  'discovered tsconfig that excludes linted shared entrypoint reports configuration error',
+  rule,
+  {
+    files: [
+      {
+        path: 'src/ui/tsconfig.json',
+        content: '{"compilerOptions":{"rootDir":"."},"include":["feature-a/support.ts"]}',
+      },
+      { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+      { path: 'src/ui/feature-a/support.ts', content: 'export const SUPPORT = 1' },
+    ],
+    settings: { unslop: { architecture: { components: { shared: true } } } },
+    filename: 'src/ui/components/index.ts',
+    code: 'export const Button = 1',
+    errors: [{ messageId: 'configurationError' }],
+  },
+)
+
+scenario('missing tsconfig error includes linted file and search root', rule, {
+  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  filename: VIRTUAL_SHARED_ENTRYPOINT,
+  code: 'export const Button = 1',
+  errors: [
+    {
+      messageId: 'configurationError',
+      data: { details: missingTsconfigMessage(VIRTUAL_SHARED_ENTRYPOINT) },
+    },
+  ],
 })
 
 scenario('missing architecture settings fails gracefully without reporting', rule, {
