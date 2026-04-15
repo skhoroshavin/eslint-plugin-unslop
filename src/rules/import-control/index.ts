@@ -5,6 +5,8 @@ import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } 
 import node_path from 'node:path'
 
 import {
+  createConfigurationErrorListeners,
+  formatProjectContextError,
   getArchitectureRuleState,
   getRelativePath,
   isInsidePath,
@@ -23,6 +25,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       notAllowed: 'Import denied: module {{from}} cannot import module {{to}}.',
       nonEntrypoint:
         'Import denied: cross-module imports must target a configured module entrypoint (offending import: {{specifier}}).',
@@ -33,7 +36,11 @@ export default {
   },
   create(context) {
     const state = getArchitectureRuleState(context)
-    if (state === undefined) return {}
+    if (state.kind === 'context-error') {
+      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
+    }
+
+    if (state.kind !== 'active') return {}
 
     return {
       ImportDeclaration(node) {
@@ -168,7 +175,7 @@ interface DeclarationEdge {
   targetFile: string
 }
 
-type RuleState = NonNullable<ReturnType<typeof getArchitectureRuleState>>
+type RuleState = Extract<ReturnType<typeof getArchitectureRuleState>, { kind: 'active' }>
 
 function reportDeepSameModuleImport(
   context: Rule.RuleContext,

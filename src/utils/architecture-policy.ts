@@ -2,25 +2,23 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
-import { getTypeScriptProjectContext, isFileInProject } from './ts-program.js'
+import { getRequiredTypeScriptProjectContext } from './ts-program.js'
 
-import type { ProjectContext } from './ts-program.js'
+import type { ProjectContext, ProjectContextError } from './ts-program.js'
 
 import { getRelativePath, normalizePath, trimSlashes } from './tsconfig-resolution.js'
 
-export function getArchitectureRuleState(
-  context: Rule.RuleContext,
-): ArchitectureRuleState | undefined {
+export function getArchitectureRuleState(context: Rule.RuleContext): ArchitectureRuleState {
   const filename = context.filename
-  if (filename.length === 0) return undefined
+  if (filename.length === 0) return { kind: 'inactive' }
 
   const policy = readArchitecturePolicy(context)
-  if (policy === undefined) return undefined
+  if (policy.kind !== 'active') return policy
 
-  const moduleMatch = matchFileToArchitectureModule(filename, policy)
-  if (moduleMatch === undefined) return undefined
+  const moduleMatch = matchFileToArchitectureModule(filename, policy.policy)
+  if (moduleMatch === undefined) return { kind: 'inactive' }
 
-  return { filename, policy, moduleMatch }
+  return { kind: 'active', filename, policy: policy.policy, moduleMatch }
 }
 
 export function matchFileToArchitectureModule(
@@ -50,33 +48,57 @@ const ENTRYPOINT_FILES = new Set([
   'types.jsx',
 ])
 
-interface ArchitectureRuleState {
-  filename: string
-  policy: ArchitecturePolicy
-  moduleMatch: MatchedArchitectureModule
-}
+type ArchitectureRuleState =
+  | { kind: 'inactive' }
+  | { kind: 'context-error'; filename: string; error: ProjectContextError }
+  | {
+      kind: 'active'
+      filename: string
+      policy: ArchitecturePolicy
+      moduleMatch: MatchedArchitectureModule
+    }
 
-function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicy | undefined {
+function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicyState {
   const architecture = getArchitectureSettings(context.settings)
-  if (architecture === undefined) return undefined
+  if (architecture === undefined) return { kind: 'inactive' }
 
   const modules = parseArchitectureModules(architecture)
-  if (modules.length === 0) return undefined
+  if (modules.length === 0) return { kind: 'inactive' }
 
-  const projectContext = getTypeScriptProjectContext(context.filename)
-  if (projectContext === undefined) {
-    warnMissingTsconfig(context.filename)
-    return undefined
+  const projectContext = getRequiredTypeScriptProjectContext(context.filename)
+  if (projectContext.kind !== 'active') {
+    return getArchitectureContextErrorState(context.filename, modules, projectContext.error)
   }
 
-  if (!isFileInProject(context.filename, projectContext)) return undefined
-
-  return { projectContext, modules }
+  return {
+    kind: 'active',
+    policy: { projectContext: projectContext.projectContext, modules },
+  }
 }
 
 interface ArchitecturePolicy {
   projectContext: ProjectContext
   modules: ArchitectureModuleDefinition[]
+}
+
+type ArchitecturePolicyState =
+  | { kind: 'inactive' }
+  | { kind: 'context-error'; filename: string; error: ProjectContextError }
+  | { kind: 'active'; policy: ArchitecturePolicy }
+
+function getArchitectureContextErrorState(
+  filename: string,
+  modules: ArchitectureModuleDefinition[],
+  error: ProjectContextError,
+): ArchitecturePolicyState {
+  if (error.reason !== 'file-not-in-project' || error.projectContext === undefined) {
+    return { kind: 'context-error', filename, error }
+  }
+
+  const policy = { projectContext: error.projectContext, modules }
+  return matchFileToArchitectureModule(filename, policy) === undefined
+    ? { kind: 'inactive' }
+    : { kind: 'context-error', filename, error }
 }
 
 function getArchitectureSettings(settings: unknown): Record<string, unknown> | undefined {
@@ -265,13 +287,3 @@ function countWildcards(value: string): number {
 function isOutsideProject(pathValue: string): boolean {
   return pathValue === '..' || pathValue.startsWith('../') || node_path.isAbsolute(pathValue)
 }
-
-function warnMissingTsconfig(filename: string): void {
-  if (warnedMissingTsconfigForFiles.has(filename)) return
-  warnedMissingTsconfigForFiles.add(filename)
-  console.warn(
-    `[eslint-plugin-unslop] No usable TypeScript project context found for ${filename}. Architecture rules are disabled for this file.`,
-  )
-}
-
-const warnedMissingTsconfigForFiles = new Set<string>()

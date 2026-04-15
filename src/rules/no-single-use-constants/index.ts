@@ -5,8 +5,8 @@ import type { Node, Program, VariableDeclaration, VariableDeclarator, Identifier
 import ts from 'typescript'
 
 import {
-  getTypeScriptProjectContext,
-  isFileInProject,
+  formatProjectContextError,
+  getRequiredTypeScriptProjectContext,
   normalizeResolvedPath,
 } from '../../utils/index.js'
 
@@ -21,6 +21,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       singleUse:
         'constant "{{name}}" has only {{count}} real use(s) across the project; inline or remove it',
     },
@@ -34,7 +35,21 @@ export default {
         collectExportedNames(node, exportedNames)
       },
       'Program:exit'(node: Program) {
-        const tsContext = filename.length > 0 ? getTypeScriptProjectContext(filename) : undefined
+        const projectContext =
+          exportedNames.size > 0 && filename.length > 0
+            ? getRequiredTypeScriptProjectContext(filename)
+            : undefined
+        if (projectContext?.kind === 'context-error') {
+          context.report({
+            node,
+            messageId: 'configurationError',
+            data: { details: formatProjectContextError(projectContext.error) },
+          })
+          return
+        }
+
+        const tsContext =
+          projectContext?.kind === 'active' ? projectContext.projectContext : undefined
         analyzeProgram({ ruleCtx: context, exportedNames, tsContext, filename }, node)
       },
     }
@@ -77,7 +92,7 @@ function resolveUseCount(
 ): number | undefined {
   const { ruleCtx, tsContext, filename } = analysisCtx
   if (isExported) {
-    if (tsContext === undefined || !isFileInProject(filename, tsContext)) return undefined
+    if (tsContext === undefined) return undefined
     return countExportedUses(name, filename, tsContext)
   }
   return countLocalReadRefs(ruleCtx.sourceCode.getDeclaredVariables(declarator))

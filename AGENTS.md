@@ -1,167 +1,158 @@
 # AGENTS.md
 
-Guidance for coding agents working in `eslint-plugin-unslop`.
+Guidance for coding agents working in `eslint-plugin-unslop` — an ESLint plugin that flags low-quality, often LLM-generated code patterns.
 
-## Purpose
+## Stack
 
-- This repository publishes an ESLint plugin that flags low-quality, often LLM-generated code patterns.
-- Most work is in ESLint rule logic, rule helper utilities, and Vitest-based rule tests.
-- Keep behavior deterministic, narrow in scope, and easy to reason about.
+| Concern     | Tool                                      |
+| ----------- | ----------------------------------------- |
+| Package mgr | npm                                       |
+| Runtime     | Node >= 18                                |
+| Language    | TypeScript (strict, ESM)                  |
+| Build       | tsup                                      |
+| Lint        | ESLint v9 flat config + typescript-eslint |
+| Format      | Prettier                                  |
+| Tests       | Vitest + ESLint RuleTester                |
 
-## Project Snapshot
+## Commands
 
-- Package manager: `npm`
-- Runtime: Node.js `>=18`
-- Language: TypeScript (`strict: true`)
-- Module system: ESM (`"type": "module"`)
-- Build tool: `tsup`
-- Linting: ESLint v9 flat config + `typescript-eslint`
-- Formatting: Prettier
-- Tests: Vitest + ESLint `RuleTester`
-
-## Setup And Core Commands
-
-- Install dependencies: `npm install`
-- Build distributable: `npm run build`
-- Run full test suite once: `npm run test`
-- Run tests in watch mode: `npm run test:watch`
-- Apply autofixes: `npm run fix`
-- Full verification pipeline: `npm run verify`
-- Prepublish hook: `npm run prepublishOnly`
-
-## What Each Script Runs
-
-- `npm run build` -> `tsup`
-- `npm run test` -> `vitest run`
-- `npm run test:watch` -> `vitest`
-- `npm run fix` -> `knip --fix && eslint . --fix && prettier . --write`
-- `npm run verify` -> `prettier . --check && knip && depcruise src && jscpd && tsc --noEmit && tsup && eslint .`
-
-## Running A Single Test (Important)
-
-- Single file: `npm run test -- src/rules/no-special-unicode/index.test.ts`
-- Another file example: `npm run test -- src/rules/import-control/index.test.ts`
-- Single test name across suite: `npm run test -- -t "cross-module import is blocked"`
-- Single file + test name: `npx vitest run src/rules/import-control/index.test.ts -t "cross-module import is blocked"`
-- Watch one file: `npx vitest src/rules/import-control/index.test.ts`
+| Task                | Command                                                                      |
+| ------------------- | ---------------------------------------------------------------------------- |
+| Install             | `npm install`                                                                |
+| Build               | `npm run build` (tsup)                                                       |
+| Autofix             | `npm run fix` (knip --fix && eslint --fix && prettier --write)               |
+| Verify              | `npm run verify` (prettier --check, knip, jscpd, tsc --noEmit, tsup, eslint) |
+| Test                | `npm run test` (vitest run)                                                  |
+| Test watch          | `npm run test:watch` (vitest)                                                |
+| Single test file    | `npm run test -- src/rules/<rule>/index.test.ts`                             |
+| Single test by name | `npm run test -- -t "description"`                                           |
+| File + name combo   | `npx vitest run src/rules/<rule>/index.test.ts -t "description"`             |
 
 ## Repository Layout
 
-- `src/index.ts`: plugin entrypoint and generated shareable configs
-- `src/rules/index.ts`: exported rule registry
-- `src/rules/<rule-name>/index.ts`: main implementation for each rule
-- `src/rules/<rule-name>/*.test.ts`: colocated tests for each rule
-- `src/rules/read-friendly-order/*.ts`: extra helpers and rule-specific modules
-- `src/utils/*.ts`: shared helpers for paths, fixtures, option parsing, and listeners
-- `dist/`: build output (generated)
-- `eslint.config.mjs`, `tsconfig.json`, `tsup.config.ts`: core tooling configuration
+```
+src/index.ts                       plugin entrypoint + shareable configs
+src/rules/index.ts                 rule registry
+src/rules/<rule>/index.ts          rule implementation (default export)
+src/rules/<rule>/*.test.ts         colocated tests
+src/rules/read-friendly-order/*.ts extra rule-specific helpers
+src/utils/*.ts                     shared helpers (paths, fixtures, options, listeners)
+openspec/specs/<rule>/spec.md      spec scenarios per rule
+scripts/                           tooling scripts
+dist/                              build output (generated)
+```
 
-## Agent Instruction Files
+## Lint Guardrails
 
-- Primary agent guide is this file: `AGENTS.md`.
-- `CLAUDE.md` points back to `AGENTS.md`.
-- No repository Cursor rules were found in `.cursor/rules/`.
-- No `.cursorrules` file was found.
-- No GitHub Copilot instructions file was found at `.github/copilot-instructions.md`.
-- If any of those files are added later, treat them as high-priority constraints.
+Enforced via ESLint — `npm run verify` catches violations.
 
-## Local Lint Guardrails
+- Complexity: max **8** (max **1** in test files)
+- Max params: **4**
+- Max lines per function: **50**
+- Max lines per file: **600**
+- **`TSAsExpression` is banned** — including `as const`. Use type guards, explicit types, or `readonly` tuples instead (e.g. `const X: readonly ['a', 'b'] = ['a', 'b']`).
+- Prefer extracting helpers over disabling lint rules.
 
-- Cyclomatic complexity max: `8`
-- Max params per function: `4`
-- Max lines per function: `50`
-- Max lines per file: `600`
-- `TSAsExpression` is forbidden; avoid `value as Type` assertions
-- In tests (`src/**/*.test.ts`), `complexity` is constrained very aggressively (`max: 1`)
-- Prefer extracting helpers over disabling lint rules
+## Code Style
 
-## Code Style: Imports
+### Imports
 
-- Use ESM imports/exports only.
-- Use `import type` for type-only imports.
-- Use `node:` protocol for Node built-ins.
-- Keep internal imports relative and include `.js` extension.
-- Typical grouping: Node built-ins, external deps, internal modules.
+- ESM only. Use `import type` for type-only imports.
+- `node:` protocol for Node built-ins.
+- Relative paths with `.js` extension for internal imports.
+- Group: Node built-ins, external deps, internal modules.
 
-## Code Style: Formatting And Structure
+### Formatting
 
+- Prettier config: 2 spaces, single quotes, no semicolons, trailing commas, print width 100.
 - Follow existing formatting; avoid unrelated reformatting.
-- Prettier defaults in this repo: 2 spaces, single quotes, no semicolons, trailing commas where valid, print width ~100.
-- Prefer small functions, early returns, and narrow helper boundaries.
-- Keep visitor callbacks thin; move heavier logic to helpers.
-- Add comments only for non-obvious intent or tricky invariants.
+- Small functions, early returns, thin visitor callbacks.
+- Comments only for non-obvious intent.
 
-## Code Style: Types
+### Types
 
-- Maintain strict TypeScript compatibility.
-- Avoid `any`; prefer `unknown` plus narrowing.
-- Avoid type assertions with `as` (except `as const` where appropriate).
-- Reuse upstream/library-exported types before inventing local duplicates.
-- Use explicit interfaces/types for structured option objects and parsed state.
-- Favor type guards, discriminated unions, and typed maps/records.
+- Avoid `any`; prefer `unknown` + narrowing.
+- Reuse upstream types before inventing local duplicates.
+- Favor type guards, discriminated unions, typed maps/records.
 
-## Naming Conventions
+### Naming
 
-- Rule file and rule id naming: kebab-case (for example, `import-control`).
-- Variables/functions: camelCase.
-- Types/interfaces: PascalCase.
-- Symbolic constants: UPPER_SNAKE_CASE.
-- Test names should read like behavior statements.
+- Rule IDs / folders: `kebab-case`
+- Variables / functions: `camelCase`
+- Types / interfaces: `PascalCase`
+- Constants: `UPPER_SNAKE_CASE`
 
-## Rule Authoring Conventions
+## Rule Authoring
 
-- Export rule modules as default exports satisfying `Rule.RuleModule`.
-- Include complete `meta`: `type`, `docs.description`, `docs.recommended`, `schema`, and `messages`.
-- Prefer `messageId` usage in reports/tests over matching full literal strings.
-- Parse non-trivial options through helpers instead of inline branching.
-- In `create(context)`, return `{}` early when prerequisites are absent.
-- Register new rules in `src/rules/index.ts` and wire into configs when intended.
+- Default-export a `Rule.RuleModule`.
+- Include complete `meta`: `type`, `docs.description`, `docs.recommended`, `schema`, `messages`.
+- Use `messageId` in reports and tests.
+- Parse non-trivial options through helpers, not inline branching.
+- Return `{}` early from `create(context)` when prerequisites are missing.
+- Register new rules in `src/rules/index.ts`.
 
-## Error Handling And Resilience
+## Module Boundaries
 
-- Favor graceful fallbacks over throwing during lint execution.
-- Treat missing parser services or TS program state as non-fatal.
-- Guard nullish values before dereferencing.
-- Do not assume files exist; check first.
-- For "not applicable" helper outcomes, return `undefined` or another established local sentinel consistently.
+- Each rule lives in `src/rules/<rule>/` with `index.ts` as the public API.
+- Rule source may import from: same folder, `src/utils/`, Node built-ins, external packages. **Cross-rule imports are forbidden.**
+- `src/utils/` must not import from `src/rules/`.
+- Tests import the rule through its `index.ts` and treat it as a black box.
+- Architecture boundaries are enforced at lint time via `settings.unslop.architecture`.
 
-## Filesystem And Path Practices
+## Error Handling
 
-- Use `node:path` helpers (`join`, `resolve`, `dirname`, `relative`) for path logic.
-- Normalize path comparisons when needed (for example using repo helpers like `toPosix` and `isInsidePath`).
+- Never throw during lint execution; use graceful fallbacks.
+- Treat missing parser services or TS program as non-fatal.
+- Guard nullish values. Don't assume files exist.
+- Return `undefined` for "not applicable" outcomes.
+
+## TSConfig Resolution
+
+- The plugin locates the nearest `tsconfig.json` per file using TS config discovery (with `extends` resolution).
+- Provides project root, source root, compiler options, and a cached semantic project context.
+- Module resolution (including `paths`/`baseUrl`) uses TypeScript's own resolver.
+- Rules needing a semantic project become no-ops when no `tsconfig.json` is found.
+
+## Path Handling
+
+- Use `node:path` helpers for all path logic.
+- Normalize comparisons using repo helpers like `normalizePath` and `isInsidePath`.
 - Avoid platform-specific assumptions.
-- Be careful with `sourceRoot` handling; rules support inferred and explicit roots.
 
 ## Testing Conventions
 
-The full test specification is at `openspec/specs/test-conventions/spec.md`. Read it before writing or modifying any test. The rules below are a summary; the spec is authoritative.
+**All tests are end-to-end via `RuleTester`.** No unit tests of internal helpers.
 
-- All tests are end-to-end through `RuleTester`. No unit tests of internal helpers.
-- Every test case uses `scenario()` from `src/utils/test-fixtures/index.ts` — the one and only shared test utility.
-- Every test case is self-contained: all inputs (code, settings, file layout) are written inline in the call, no scrolling required.
-- `scenario.todo('description')` marks a spec scenario not yet covered by an implementation.
-- `messageId` assertions are preferred over raw `message` strings.
-- Each named scenario in `openspec/specs/<rule>/spec.md` must have a corresponding `scenario()` call.
-- **Do not add exports to `src/utils/test-fixtures/index.ts`.** Adding a second export requires updating the spec first.
+- Every test uses `scenario()` from `src/utils/test-fixtures/index.ts` — the only shared test utility.
+- **Do not add exports to that file** without strong justification (needed by 3+ test files).
+- Every test is self-contained: all inputs inline in the `scenario()` call.
+- `scenario.todo('description')` marks unimplemented spec scenarios.
+- Each named scenario in `openspec/specs/<rule>/spec.md` must have a matching `scenario()` call.
+- Test descriptions are behavior statements, not labels.
+- No `beforeEach`/`afterEach`/`afterAll` for fixtures — use `scenario({ files: [...] })`.
 
-## Recommended Change Workflow For Agents
+### `scenario()` API
 
-- Read the target rule, nearby helpers, and its colocated tests before editing.
-- Keep edits minimal and avoid drive-by refactors.
-- Run the most targeted test command first.
-- Then run broader checks as needed (`npm run verify`, then `npm run test`).
-- Use `npm run fix` to apply autofixes before final verification when lint/format issues appear.
+| Case                     | Required fields                         |
+| ------------------------ | --------------------------------------- |
+| Valid                    | `code`                                  |
+| Invalid with autofix     | `code`, `errors`, `output`              |
+| Invalid without autofix  | `code`, `errors`, `output: null`        |
+| Filesystem-scanning rule | `files`, `filename`                     |
+| TypeScript syntax        | `typescript: true` (only for TS syntax) |
+| Architecture rules       | `settings` inline as unslop settings    |
 
-## Pre-Push Checklist (Mandatory)
+## Workflow
 
-Before pushing any branch or creating a PR, **always** run these in order:
+1. Read the target rule, its helpers, and colocated tests before editing.
+2. Keep edits minimal — no drive-by refactors.
+3. Run the most targeted test first.
+4. Run `npm run fix` if lint/format issues appear.
+5. Run `npm run verify` — must exit clean.
+6. Run `npm run test` — all tests must pass.
 
-1. `npm run fix` — auto-fixes lint, format, and unused import issues; address anything it cannot auto-fix
-2. `npm run verify` — full pipeline (prettier, knip, jscpd, tsc, tsup, eslint); must exit clean
-3. `npm run test` — all tests must pass
+## Release Process
 
-Common pitfalls to watch for:
-
-- `knip` flags binaries referenced in workflow files (e.g. `tsx`) if they are not in `devDependencies` — add them
-- The `no-restricted-syntax` ESLint rule bans **all** `TSAsExpression`, including `as const`; use explicit tuple/readonly types instead (e.g. `const X: readonly ['a', 'b'] = ['a', 'b']`)
-- New files in `scripts/` are linted and knip-checked; they must satisfy all the same rules as `src/`
+- Manual `workflow_dispatch` in GitHub Actions with a `bump` input (patch/minor/major).
+- Bumps version, commits to main, tags, runs verify + test, then publishes with OIDC provenance.
+- `github-actions[bot]` has branch protection bypass for the version commit.

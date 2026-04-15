@@ -1,7 +1,7 @@
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: special-unicode-autofix/spec.md
+// spec: no-special-unicode/spec.md
 
 scenario('plain ASCII string is allowed', rule, {
   code: 'const value = "plain ascii text";',

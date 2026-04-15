@@ -1,47 +1,48 @@
-## Purpose
-
-Define the plugin's shareable configuration presets and their intended behavior.
-
 ## ADDED Requirements
 
 ### Requirement: Plugin SHALL expose a minimal config for zero-config symbol fixing
 
-The plugin SHALL export `configs.minimal` containing only `no-special-unicode` and `no-unicode-escape` at error severity. This config requires no additional settings and is safe to add to any project without modification.
+`configs.minimal` enables only `no-special-unicode` and `no-unicode-escape` at error severity. No additional settings required.
 
 #### Scenario: Minimal config enables symbol rules
 
-- **WHEN** a user spreads `unslop.configs.minimal` into their ESLint config
-- **THEN** `unslop/no-special-unicode` and `unslop/no-unicode-escape` MUST be enabled at error severity
+- **WHEN** spreading `unslop.configs.minimal`
+- **THEN** both rules at error severity
 
 #### Scenario: Minimal config requires no settings
 
-- **WHEN** `unslop.configs.minimal` is used without any `settings.unslop` block
-- **THEN** both enabled rules MUST operate without errors or warnings about missing configuration
+- **WHEN** used without `settings.unslop`
+- **THEN** both rules operate without errors
 
 ### Requirement: Plugin SHALL expose a full config for architecture and readability enforcement
 
-The plugin SHALL export `configs.full` that enables the complete rule suite: `no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`, and `read-friendly-order`. This config is designed for projects that define `settings.unslop.architecture`.
+`configs.full` enables the complete suite: `no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`, `read-friendly-order`. It is designed for projects with `settings.unslop.architecture`. For rules that require TypeScript semantic context, missing, invalid, or non-inclusive tsconfig context MUST surface as explicit lint errors instead of silent no-ops.
 
 #### Scenario: Full config enables all rules
 
-- **WHEN** a user spreads `unslop.configs.full` into their ESLint config
-- **THEN** all six rules (`no-special-unicode`, `no-unicode-escape`, `import-control`, `export-control`, `no-false-sharing`, `read-friendly-order`) MUST be enabled at error severity
+- **WHEN** spreading `unslop.configs.full`
+- **THEN** all six rules at error severity
 
 #### Scenario: Full config without architecture settings is graceful
 
-- **WHEN** `unslop.configs.full` is used without `settings.unslop.architecture`
-- **THEN** `import-control`, `export-control`, and `no-false-sharing` MUST no-op without throwing, while symbol rules remain active
+- **WHEN** used without `settings.unslop.architecture`
+- **THEN** architecture rules no-op, symbol rules remain active
 
 #### Scenario: Full config with architecture settings enforces boundaries
 
-- **WHEN** `unslop.configs.full` is used alongside a valid `settings.unslop.architecture` block
-- **THEN** architecture rules MUST enforce module boundaries and shared-module constraints as configured
+- **WHEN** used with valid `settings.unslop.architecture` and usable tsconfig context
+- **THEN** architecture rules enforce boundaries as configured
+
+#### Scenario: Full config with architecture settings and unusable tsconfig fails explicitly
+
+- **WHEN** used with `settings.unslop.architecture` but required tsconfig context cannot be loaded
+- **THEN** impacted architecture/semantic rules report configuration errors with actionable path context
 
 ### Requirement: Plugin SHALL NOT expose a config named recommended
 
-The name `configs.recommended` SHALL NOT exist on the plugin export. Projects previously using `unslop.configs.recommended` MUST migrate to `unslop.configs.minimal`.
+`configs.recommended` SHALL NOT exist.
 
 #### Scenario: No recommended config export
 
-- **WHEN** a consumer accesses `unslop.configs.recommended`
-- **THEN** the value MUST be `undefined`
+- **WHEN** accessing `unslop.configs.recommended`
+- **THEN** value is `undefined`

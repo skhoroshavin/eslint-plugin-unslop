@@ -2,101 +2,106 @@
 
 ### Requirement: no-single-use-constants SHALL report single-use module constants
 
-`unslop/no-single-use-constants` MUST report a module-scope `const` declaration when its total real usage count across the semantic project is 0 or 1. The rule MUST only analyze declarators whose binding id is a plain identifier, and it MUST report on the `VariableDeclarator` with message id `singleUse` including the constant name and final count.
+Report a module-scope `const` declaration when its total real usage count across the semantic project is 0 or 1. Only plain identifier bindings. Reports on `VariableDeclarator` with message id `singleUse`.
 
 #### Scenario: Module constant has no real uses
 
-- **WHEN** a module-scope `const` identifier is never read anywhere in the project
-- **THEN** `unslop/no-single-use-constants` MUST report that declarator with count `0`
+- **WHEN** a module-scope `const` identifier has zero reads
+- **THEN** report with count `0`
 
 #### Scenario: Module constant has exactly one real use
 
-- **WHEN** a module-scope `const` identifier is read exactly once across the project
-- **THEN** `unslop/no-single-use-constants` MUST report that declarator with count `1`
+- **WHEN** read exactly once
+- **THEN** report with count `1`
 
 #### Scenario: Module constant has two real uses
 
-- **WHEN** a module-scope `const` identifier is read two or more times across the project
-- **THEN** `unslop/no-single-use-constants` MUST NOT report that declarator
+- **WHEN** read two or more times
+- **THEN** not reported
 
 ### Requirement: no-single-use-constants SHALL exclude non-inlineable declarations and non-uses
 
-`unslop/no-single-use-constants` MUST ignore declarations that are not plain module-scope inlineable constants. The rule MUST skip declarators with destructured ids, declarators initialized with `ArrowFunctionExpression`, `FunctionExpression`, or `ClassExpression`, identifiers that appear only in import or export specifier positions, and bare `export default IDENTIFIER` statements.
+Skip destructured ids, arrow/function/class expressions, import/export specifier positions, and bare `export default IDENTIFIER`.
 
 ### Requirement: no-single-use-constants SHALL NOT report constants initialized with structured data or factory expressions
 
-`unslop/no-single-use-constants` MUST ignore module-scope `const` declarators whose initializer is an `ObjectExpression` or `NewExpression`. These represent named structured data - dispatch tables, configuration objects, or performance-optimized structures such as `new Set([...])` - where the name is not an alias for a trivially inlineable value but is instead a deliberate semantic or performance choice. The rule MUST also ignore declarators whose initializer is a `CallExpression` carrying explicit TypeScript type arguments, as these represent generic factory or builder calls whose results are intentionally cached at module scope.
+Ignore `ObjectExpression`, `NewExpression` initializers. Also ignore `CallExpression` with explicit TypeScript type arguments.
 
 #### Scenario: Destructured const is ignored
 
-- **WHEN** a module-scope `const` declaration uses an object or array pattern instead of a plain identifier
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator
+- **WHEN** binding uses object or array pattern
+- **THEN** ignored
 
 #### Scenario: Function-valued const is ignored
 
-- **WHEN** a module-scope `const` identifier is initialized with an arrow function or function expression
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator
+- **WHEN** initialized with arrow function or function expression
+- **THEN** ignored
 
 #### Scenario: Class-valued const is ignored
 
-- **WHEN** a module-scope `const` identifier is initialized with a class expression
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator
+- **WHEN** initialized with class expression
+- **THEN** ignored
 
 #### Scenario: Re-export does not count as a use
 
-- **WHEN** an identifier only appears in `export { FOO }` or `export { FOO as Bar }`
-- **THEN** `unslop/no-single-use-constants` MUST NOT count those export specifier occurrences as uses
+- **WHEN** identifier only appears in `export { FOO }` or `export { FOO as Bar }`
+- **THEN** not counted
 
 #### Scenario: Export default identifier does not count as a use
 
-- **WHEN** an identifier only appears in `export default FOO`
-- **THEN** `unslop/no-single-use-constants` MUST NOT count that export statement as a use
+- **WHEN** identifier only appears in `export default FOO`
+- **THEN** not counted
 
 #### Scenario: Ambient declare const is ignored
 
-- **WHEN** a module-scope `const` declaration has no initializer (i.e., it is a `declare const` ambient type declaration)
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator
+- **WHEN** a `const` declaration has no initializer (`declare const`)
+- **THEN** ignored
 
 #### Scenario: Object literal initializer is ignored
 
-- **WHEN** a module-scope `const` identifier is initialized with an object literal (e.g., a dispatch table, configuration object, or state machine record)
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
+- **WHEN** initialized with an object literal
+- **THEN** ignored regardless of use count
 
 #### Scenario: Array literal initializer is reported when used once
 
-- **WHEN** a module-scope `const` identifier is initialized with an array literal and is read exactly once across the project
-- **THEN** `unslop/no-single-use-constants` MUST report that declarator with count `1`
+- **WHEN** initialized with array literal and read once
+- **THEN** report with count `1`
 
 #### Scenario: Constructor call initializer is ignored
 
-- **WHEN** a module-scope `const` identifier is initialized with a `new` expression (e.g., `new Set([...])`, `new Map([...])`)
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
+- **WHEN** initialized with `new` expression (e.g., `new Set(...)`)
+- **THEN** ignored
 
 #### Scenario: Generic factory call initializer is ignored
 
-- **WHEN** a module-scope `const` identifier is initialized with a call expression that carries explicit TypeScript type arguments (e.g., `typia.createValidate<MySchema>()`, `builder.compile<T>()`)
-- **THEN** `unslop/no-single-use-constants` MUST ignore that declarator regardless of use count
+- **WHEN** initialized with a call expression carrying TypeScript type arguments (e.g., `typia.createValidate<MySchema>()`)
+- **THEN** ignored
 
 ### Requirement: no-single-use-constants SHALL count project-wide semantic uses
 
-For exported module-scope constants, `unslop/no-single-use-constants` MUST count real uses across all files in the semantic TypeScript project by matching canonical symbol identity. The rule MUST count expression uses in local files and other project files, including uses inside exported expressions such as `export const BAR = FOO`, and it MUST become a no-op when no semantic TypeScript project is available for the linted file.
+For exported constants, count uses across all files in the semantic TypeScript project by canonical symbol identity. If semantic project context cannot be created for the linted file, the rule MUST report a configuration error instead of no-op behavior.
 
 #### Scenario: Exported constant is used from another file
 
-- **WHEN** an exported module-scope `const` identifier is imported and read from another file in the same semantic project
-- **THEN** `unslop/no-single-use-constants` MUST include that read in the total usage count
+- **WHEN** imported and read from another file
+- **THEN** included in count
 
 #### Scenario: Exported expression use counts
 
-- **WHEN** a constant identifier appears in an exported value expression such as `export const BAR = FOO`
-- **THEN** `unslop/no-single-use-constants` MUST count that identifier occurrence as a real use
+- **WHEN** `export const BAR = FOO` references FOO
+- **THEN** FOO counted as a use
 
 #### Scenario: Import declaration does not count as a use
 
-- **WHEN** an identifier only appears in `import { FOO } from '...'` or `import FOO from '...'`
-- **THEN** `unslop/no-single-use-constants` MUST NOT count those import positions as uses
+- **WHEN** identifier only appears in `import { FOO } from '...'`
+- **THEN** not counted
 
 #### Scenario: Semantic project unavailable
 
-- **WHEN** the rule cannot create or access a semantic TypeScript project for the linted file
-- **THEN** `unslop/no-single-use-constants` MUST become a no-op and report nothing for that file
+- **WHEN** no semantic TypeScript project available
+- **THEN** report a configuration error with actionable path context
+
+#### Scenario: File is outside discovered tsconfig project
+
+- **WHEN** a tsconfig is discovered but the linted file is not included by that project
+- **THEN** report a configuration error including linted file and tsconfig path details

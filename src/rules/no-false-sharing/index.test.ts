@@ -1,8 +1,9 @@
+import node_path from 'node:path'
+
 import rule from './index.js'
 import { scenario } from '../../utils/test-fixtures/index.js'
 
-// spec: architecture-import-export-control/spec.md
-// spec: no-false-sharing-symbol-analysis/spec.md
+// spec: no-false-sharing/spec.md
 
 const TSCONFIG = {
   path: 'tsconfig.json',
@@ -10,14 +11,16 @@ const TSCONFIG = {
     '{"compilerOptions":{"strict":true,"rootDir":"./src","baseUrl":".","paths":{"@/*":["src/*"]}},"include":["**/*.ts"]}',
 }
 
-const SHARED_SETTINGS = {
-  unslop: {
-    architecture: {
-      'ui/components': { shared: true },
-      'feature-a/*': { imports: [] },
-      'feature-b/*': { imports: [] },
-    },
-  },
+const SHARED_ARCHITECTURE = {
+  'ui/components': { shared: true },
+  'feature-a/*': { imports: [] },
+  'feature-b/*': { imports: [] },
+}
+
+const VIRTUAL_SHARED_ENTRYPOINT = '/virtual/unslop/src/ui/components/index.ts'
+
+function missingTsconfigMessage(filename: string): string {
+  return `TypeScript project context unavailable for "${filename}". No tsconfig.json found while searching from "${node_path.dirname(filename)}".`
 }
 
 scenario('alias import counts as a symbol consumer', rule, {
@@ -30,9 +33,8 @@ scenario('alias import counts as a symbol consumer', rule, {
       content: "import { Button } from '@/ui/components/index'",
     },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
 })
 
 scenario('exported symbol has two distinct consumers', rule, {
@@ -42,9 +44,8 @@ scenario('exported symbol has two distinct consumers', rule, {
     { path: 'src/feature-a/screen.ts', content: "import { Card } from '@/ui/components'" },
     { path: 'src/feature-b/screen.ts', content: "import { Card } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Card = 1',
 })
 
 scenario('exported symbol has one consumer group', rule, {
@@ -53,9 +54,8 @@ scenario('exported symbol has one consumer group', rule, {
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
   errors: [
     {
       message:
@@ -70,9 +70,8 @@ scenario('single-consumer symbol report includes consumer group', rule, {
     { path: 'src/ui/components/index.ts', content: 'export const Input = 1' },
     { path: 'src/feature-a/form.ts', content: "import { Input } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Input = 1',
   errors: [
     {
       message:
@@ -83,9 +82,8 @@ scenario('single-consumer symbol report includes consumer group', rule, {
 
 scenario('zero-consumer symbol report indicates no consumers', rule, {
   files: [TSCONFIG, { path: 'src/ui/components/index.ts', content: 'export const Toast = 1' }],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Toast = 1',
   errors: [
     {
       message:
@@ -112,9 +110,8 @@ scenario('type-only imports satisfy sharing threshold', rule, {
         "import type { ButtonProps } from '@/ui/components/types'\nconst value: ButtonProps = { label: 'b' }\nvoid value",
     },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/types.ts',
-  code: 'export type ButtonProps = { label: string }',
 })
 
 scenario('direct entrypoint export counts internal shared consumers', rule, {
@@ -127,9 +124,8 @@ scenario('direct entrypoint export counts internal shared consumers', rule, {
     },
     { path: 'src/feature-a/screen.ts', content: "import { Badge } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Badge = 1',
 })
 
 scenario('re-exported symbol counts internal backing-file consumers', rule, {
@@ -143,9 +139,8 @@ scenario('re-exported symbol counts internal backing-file consumers', rule, {
     },
     { path: 'src/feature-a/screen.ts', content: "import { helper } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: "export { helper } from './helper'",
 })
 
 scenario('multiple internal consumers collapse to one shared-module group', rule, {
@@ -162,9 +157,8 @@ scenario('multiple internal consumers collapse to one shared-module group', rule
       content: "import { sharedThing } from '@/ui/components'\nvoid sharedThing",
     },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: "export { sharedThing } from './shared-thing'",
   errors: [
     {
       message:
@@ -183,9 +177,8 @@ scenario('internal-only consumer group remains insufficient', rule, {
       content: "import { localOnly } from './local-only'\nvoid localOnly",
     },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: "export { localOnly } from './local-only'",
   errors: [
     {
       message:
@@ -205,9 +198,8 @@ scenario('external deep imports of backing files do not satisfy sharing', rule, 
     },
     { path: 'src/feature-b/screen.ts', content: "import { deepOnly } from '@/ui/components'" },
   ],
-  settings: SHARED_SETTINGS,
+  architecture: SHARED_ARCHITECTURE,
   filename: 'src/ui/components/index.ts',
-  code: "export { deepOnly } from './deep-only'",
   errors: [
     {
       message:
@@ -221,9 +213,9 @@ scenario('missing tsconfig for linted file fails gracefully without reporting', 
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  architecture: { 'ui/components': { shared: true } },
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
+  errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('semantic project setup failure fails open', rule, {
@@ -233,9 +225,39 @@ scenario('semantic project setup failure fails open', rule, {
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  architecture: { 'ui/components': { shared: true } },
   filename: 'src/ui/components/index.ts',
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario(
+  'discovered tsconfig that excludes linted shared entrypoint reports configuration error',
+  rule,
+  {
+    files: [
+      {
+        path: 'src/ui/tsconfig.json',
+        content: '{"compilerOptions":{"rootDir":"."},"include":["feature-a/support.ts"]}',
+      },
+      { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
+      { path: 'src/ui/feature-a/support.ts', content: 'export const SUPPORT = 1' },
+    ],
+    architecture: { components: { shared: true } },
+    filename: 'src/ui/components/index.ts',
+    errors: [{ messageId: 'configurationError' }],
+  },
+)
+
+scenario('missing tsconfig error includes linted file and search root', rule, {
+  architecture: { 'ui/components': { shared: true } },
+  filename: VIRTUAL_SHARED_ENTRYPOINT,
   code: 'export const Button = 1',
+  errors: [
+    {
+      messageId: 'configurationError',
+      data: { details: missingTsconfigMessage(VIRTUAL_SHARED_ENTRYPOINT) },
+    },
+  ],
 })
 
 scenario('missing architecture settings fails gracefully without reporting', rule, {
@@ -244,7 +266,5 @@ scenario('missing architecture settings fails gracefully without reporting', rul
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: {} },
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
 })

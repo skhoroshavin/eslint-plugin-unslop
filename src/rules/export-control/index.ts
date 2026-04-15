@@ -60,7 +60,7 @@ export default {
 
 function buildRuleState(context: Rule.RuleContext): RuleState {
   const state = getArchitectureRuleState(context)
-  if (state === undefined) return { kind: 'inactive' }
+  if (state.kind !== 'active') return { kind: 'inactive' }
   if (!isPublicEntrypoint(state.filename)) return { kind: 'inactive' }
   if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 

@@ -5,6 +5,8 @@ import type { Rule } from 'eslint'
 import type { ImportDeclaration } from 'estree'
 
 import {
+  createConfigurationErrorListeners,
+  formatProjectContextError,
   getArchitectureRuleState,
   isSamePath,
   matchFileToArchitectureModule,
@@ -21,6 +23,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       usePublicEntrypoint:
         'White-box test import denied: tests must import this module through its public entrypoint (offending import: {{specifier}}).',
     },
@@ -29,7 +32,11 @@ export default {
     if (!isRecognizedTestFile(context.filename)) return {}
 
     const state = getArchitectureRuleState(context)
-    if (state === undefined) return {}
+    if (state.kind === 'context-error') {
+      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
+    }
+
+    if (state.kind !== 'active') return {}
 
     return {
       ImportDeclaration(node) {
@@ -102,4 +109,4 @@ interface ResolvedImport {
   targetModule: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
 }
 
-type RuleState = NonNullable<ReturnType<typeof getArchitectureRuleState>>
+type RuleState = Extract<ReturnType<typeof getArchitectureRuleState>, { kind: 'active' }>
