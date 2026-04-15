@@ -35,7 +35,7 @@ The plugin reads architecture policy from `settings.unslop.architecture`. Module
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 
-Cross-module imports are forbidden unless the importer explicitly allows the target via `imports` or the import is a shallow relative entrypoint import. Module identity is derived from the TypeScript semantic project. No semantic project means no-op.
+Cross-module imports are forbidden unless the importer explicitly allows the target via `imports` or the import is a shallow relative entrypoint import. Module identity is derived from the TypeScript semantic project. When semantic context cannot be established for a file that is subject to this rule, the rule MUST report a configuration error instead of becoming a no-op.
 
 #### Scenario: Allowed cross-module edge
 
@@ -64,8 +64,13 @@ Cross-module imports are forbidden unless the importer explicitly allows the tar
 
 #### Scenario: Semantic project unavailable
 
-- **WHEN** no usable TypeScript semantic project exists
-- **THEN** no-op
+- **WHEN** no usable TypeScript semantic project exists for a file that must be analyzed
+- **THEN** report a configuration error with actionable path context
+
+#### Scenario: File not included by discovered tsconfig
+
+- **WHEN** a tsconfig is discovered but the linted file is outside that project's file set
+- **THEN** report a configuration error with the linted file path and discovered tsconfig path
 
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 

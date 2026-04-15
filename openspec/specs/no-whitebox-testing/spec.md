@@ -68,7 +68,7 @@ MUST NOT report imports that do not resolve to same-directory private files in t
 
 ### Requirement: no-whitebox-testing SHALL fail open when architecture analysis is unavailable
 
-MUST become a no-op when architecture settings or semantic project are unavailable.
+`unslop/no-whitebox-testing` MUST remain a no-op when architecture settings are absent. When architecture settings are present but required TypeScript semantic context is unavailable, invalid, or excludes the linted test file, the rule MUST report a configuration error instead of silently skipping checks.
 
 #### Scenario: Missing architecture settings
 
@@ -77,8 +77,13 @@ MUST become a no-op when architecture settings or semantic project are unavailab
 
 #### Scenario: Semantic project unavailable
 
-- **WHEN** no usable TypeScript project
-- **THEN** report nothing
+- **WHEN** architecture settings are present and no usable TypeScript project is available
+- **THEN** report a configuration error with actionable path context
+
+#### Scenario: Linted test file outside discovered tsconfig project
+
+- **WHEN** architecture settings are present and a tsconfig is discovered but does not include the linted test file
+- **THEN** report a configuration error with linted file and tsconfig path details
 
 ### Requirement: no-whitebox-testing SHALL be enabled in the full plugin config
 

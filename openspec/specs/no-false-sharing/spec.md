@@ -21,7 +21,7 @@ Empty options schema (`schema: []`). All configuration comes from `settings.unsl
 
 ### Requirement: no-false-sharing SHALL evaluate shared entrypoint exports at symbol granularity
 
-Evaluate whether symbols exported from shared module entrypoints (`index.ts` and `types.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count.
+Evaluate whether symbols exported from shared module entrypoints (`index.ts` and `types.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count. When semantic context cannot be established for an analyzed file, the rule MUST report a configuration error.
 
 #### Scenario: Exported symbol has two distinct consumers
 
@@ -61,7 +61,12 @@ Evaluate whether symbols exported from shared module entrypoints (`index.ts` and
 #### Scenario: Semantic project unavailable for linted file
 
 - **WHEN** no usable TypeScript semantic project
-- **THEN** no-op
+- **THEN** report a configuration error with actionable path context
+
+#### Scenario: Linted file outside discovered tsconfig project
+
+- **WHEN** a tsconfig is discovered but does not include the linted file
+- **THEN** report a configuration error with linted file and tsconfig path details
 
 ### Requirement: no-false-sharing SHALL count consumers in directory mode only
 
