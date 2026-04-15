@@ -11,10 +11,8 @@ const TSCONFIG = {
 scenario('module with no exports policy allows any export', rule, {
   files: [TSCONFIG, { path: 'src/models/user/index.ts', content: 'export const anything = 1' }],
   settings: {
-    unslop: {
-      architecture: {
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'models/*': { imports: ['utils'] },
     },
   },
   filename: 'src/models/user/index.ts',
@@ -27,10 +25,8 @@ scenario('shared entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/internal.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'shared/ui': { shared: true },
-      },
+    architecture: {
+      'shared/ui': { shared: true },
     },
   },
   filename: 'src/shared/ui/index.ts',
@@ -44,10 +40,8 @@ scenario('shared types entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/internal.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'shared/ui': { shared: true },
-      },
+    architecture: {
+      'shared/ui': { shared: true },
     },
   },
   filename: 'src/shared/ui/types.ts',
@@ -61,10 +55,8 @@ scenario('non-shared entrypoint uses export-all', rule, {
     { path: 'src/models/user/internal.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'models/*': { imports: ['utils'] },
     },
   },
   filename: 'src/models/user/index.ts',
@@ -77,11 +69,9 @@ scenario('exported symbol matching the regex contract is allowed', rule, {
     { path: 'src/repository/user/index.ts', content: 'export function createUserRepo() {}' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+      'models/*': { imports: ['utils'] },
     },
   },
   filename: 'src/repository/user/index.ts',
@@ -90,11 +80,9 @@ scenario('exported symbol matching the regex contract is allowed', rule, {
 scenario('exported symbol violating the regex contract is reported', rule, {
   files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
   settings: {
-    unslop: {
-      architecture: {
-        'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+      'models/*': { imports: ['utils'] },
     },
   },
   filename: 'src/repository/user/index.ts',
@@ -110,11 +98,9 @@ scenario(
       { path: 'src/repository/user/types.ts', content: 'export default function create() {}' },
     ],
     settings: {
-      unslop: {
-        architecture: {
-          'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-          'models/*': { imports: ['utils'] },
-        },
+      architecture: {
+        'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+        'models/*': { imports: ['utils'] },
       },
     },
     filename: 'src/repository/user/types.ts',
@@ -129,11 +115,9 @@ scenario('export-all in constrained entrypoint is reported', rule, {
     { path: 'src/repository/user/internal.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+      'models/*': { imports: ['utils'] },
     },
   },
   filename: 'src/repository/user/index.ts',
@@ -142,9 +126,6 @@ scenario('export-all in constrained entrypoint is reported', rule, {
 
 scenario('missing architecture settings fails gracefully without reporting', rule, {
   files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
-  settings: {
-    unslop: {},
-  },
   filename: 'src/repository/user/index.ts',
 })
 
@@ -155,10 +136,8 @@ scenario('non-entrypoint file with export-all is rejected', rule, {
     { path: 'src/utils/internal.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        'utils/*': { imports: ['shared/*'] },
-      },
+    architecture: {
+      'utils/*': { imports: ['shared/*'] },
     },
   },
   filename: 'src/utils/helpers.ts',

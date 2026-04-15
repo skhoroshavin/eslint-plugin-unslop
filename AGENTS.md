@@ -140,7 +140,7 @@ Enforced via ESLint — `npm run verify` catches violations.
 | Invalid without autofix  | `code`, `errors`, `output: null`        |
 | Filesystem-scanning rule | `files`, `filename`                     |
 | TypeScript syntax        | `typescript: true` (only for TS syntax) |
-| Architecture rules       | `settings.unslop` inline                |
+| Architecture rules       | `settings` inline as unslop settings    |
 
 ## Workflow
 

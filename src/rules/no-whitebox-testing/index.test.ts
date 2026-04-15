@@ -23,10 +23,8 @@ scenario('recognized some.test.ts file is checked', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -46,10 +44,8 @@ scenario('recognized some.spec.ts file is checked', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.spec.ts',
@@ -69,10 +65,8 @@ scenario('recognized some.unit-test.ts file is checked', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.unit-test.ts',
@@ -92,10 +86,8 @@ scenario('recognized some.unit-spec.ts file is checked', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.unit-spec.ts',
@@ -115,10 +107,8 @@ scenario('non-test file is ignored', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.ts',
@@ -131,10 +121,8 @@ scenario('test imports same-directory private sibling file', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [], entrypoints: ['index.ts'] },
-      },
+    architecture: {
+      module: { imports: [], entrypoints: ['index.ts'] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -154,10 +142,8 @@ scenario('report includes offending import specifier', rule, {
     { path: 'src/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -177,10 +163,8 @@ scenario('test imports default index entrypoint through dot specifier', rule, {
     { path: 'src/module/index.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -193,10 +177,8 @@ scenario('test imports default index entrypoint through explicit index specifier
     { path: 'src/module/index.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -209,10 +191,8 @@ scenario('test imports configured non-index entrypoint', rule, {
     { path: 'src/module/public.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [], entrypoints: ['public.ts'] },
-      },
+    architecture: {
+      module: { imports: [], entrypoints: ['public.ts'] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -225,10 +205,8 @@ scenario('test imports child submodule entrypoint', rule, {
     { path: 'src/module/submodule/index.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -241,10 +219,8 @@ scenario('test imports child submodule internal file', rule, {
     { path: 'src/module/submodule/other.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -257,11 +233,9 @@ scenario('test imports another module', rule, {
     { path: 'src/other/index.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-        other: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
+      other: { imports: [] },
     },
   },
   filename: 'src/module/some.test.ts',
@@ -273,9 +247,6 @@ scenario('missing architecture settings', rule, {
     { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  settings: {
-    unslop: {},
-  },
   filename: 'src/module/some.test.ts',
 })
 
@@ -290,10 +261,8 @@ scenario('semantic project unavailable', rule, {
     { path: 'src/outside/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/outside/module/some.test.ts',
@@ -311,10 +280,8 @@ scenario('discovered tsconfig that excludes linted test file reports configurati
     { path: 'src/outside/module/model.ts' },
   ],
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: 'src/outside/module/some.test.ts',
@@ -323,10 +290,8 @@ scenario('discovered tsconfig that excludes linted test file reports configurati
 
 scenario('missing tsconfig reports linted file and search root', rule, {
   settings: {
-    unslop: {
-      architecture: {
-        module: { imports: [] },
-      },
+    architecture: {
+      module: { imports: [] },
     },
   },
   filename: VIRTUAL_TEST_FILE,

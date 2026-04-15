@@ -12,12 +12,10 @@ const TSCONFIG = {
 }
 
 const SHARED_SETTINGS = {
-  unslop: {
-    architecture: {
-      'ui/components': { shared: true },
-      'feature-a/*': { imports: [] },
-      'feature-b/*': { imports: [] },
-    },
+  architecture: {
+    'ui/components': { shared: true },
+    'feature-a/*': { imports: [] },
+    'feature-b/*': { imports: [] },
   },
 }
 
@@ -217,7 +215,7 @@ scenario('missing tsconfig for linted file fails gracefully without reporting', 
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  settings: { architecture: { 'ui/components': { shared: true } } },
   filename: 'src/ui/components/index.ts',
   errors: [{ messageId: 'configurationError' }],
 })
@@ -229,7 +227,7 @@ scenario('semantic project setup failure fails open', rule, {
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  settings: { architecture: { 'ui/components': { shared: true } } },
   filename: 'src/ui/components/index.ts',
   errors: [{ messageId: 'configurationError' }],
 })
@@ -246,14 +244,14 @@ scenario(
       { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
       { path: 'src/ui/feature-a/support.ts', content: 'export const SUPPORT = 1' },
     ],
-    settings: { unslop: { architecture: { components: { shared: true } } } },
+    settings: { architecture: { components: { shared: true } } },
     filename: 'src/ui/components/index.ts',
     errors: [{ messageId: 'configurationError' }],
   },
 )
 
 scenario('missing tsconfig error includes linted file and search root', rule, {
-  settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
+  settings: { architecture: { 'ui/components': { shared: true } } },
   filename: VIRTUAL_SHARED_ENTRYPOINT,
   code: 'export const Button = 1',
   errors: [
@@ -270,6 +268,5 @@ scenario('missing architecture settings fails gracefully without reporting', rul
     { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
-  settings: { unslop: {} },
   filename: 'src/ui/components/index.ts',
 })
