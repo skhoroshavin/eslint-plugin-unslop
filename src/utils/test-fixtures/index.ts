@@ -20,7 +20,7 @@ export function scenario(
   options: ScenarioOptions,
 ): void {
   test(description, () => {
-    if (options.files !== undefined) {
+    if (isFullScenario(options)) {
       runWithTempDir(rule, options)
     } else {
       runInMemory(rule, options)
@@ -32,43 +32,46 @@ scenario.todo = (description: string): void => {
   test.todo(description)
 }
 
-function runInMemory(rule: Rule.RuleModule, options: ScenarioOptions): void {
+function runInMemory(rule: Rule.RuleModule, options: SimpleScenario): void {
   const tester = makeTester(options)
   runTester(tester, rule, options, options.filename)
 }
 
-function runWithTempDir(rule: Rule.RuleModule, options: ScenarioOptions): void {
+function runWithTempDir(rule: Rule.RuleModule, options: FullScenario): void {
   const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-test-'))
   try {
     writeScenarioFiles(dir, options)
     const filename = getScenarioFilename(dir, options.filename)
-    const hasTsconfig = hasTsconfigFile(options.files)
+    const hasTsconfig = hasTsconfigFile(options)
     const tester = hasTsconfig ? makeFsTester(options, dir) : makeTester(options)
-    runTester(tester, rule, options, filename)
+    const code = getFullScenarioTargetContent(options)
+    runTester(tester, rule, { ...options, code }, filename)
   } finally {
     node_fs.rmSync(dir, { recursive: true, force: true })
   }
 }
 
-function writeScenarioFiles(dir: string, options: ScenarioOptions): void {
-  for (const file of options.files ?? []) {
+function writeScenarioFiles(dir: string, options: FullScenario): void {
+  for (const file of options.files) {
     const full = node_path.join(dir, file.path)
     node_fs.mkdirSync(node_path.dirname(full), { recursive: true })
     node_fs.writeFileSync(full, getScenarioFileContent(file, options))
   }
 }
 
-function getScenarioFileContent(file: ScenarioFile, options: ScenarioOptions): string {
-  if (file.content !== undefined) return file.content
-  return options.filename === file.path ? options.code : ''
+function getScenarioFileContent(file: ScenarioFile, options: FullScenario): string {
+  if (file.path === options.filename) {
+    return getFullScenarioTargetContent(options)
+  }
+  return file.content ?? ''
 }
 
 function getScenarioFilename(dir: string, filename: string | undefined): string | undefined {
   return filename !== undefined ? node_path.join(dir, filename) : undefined
 }
 
-function hasTsconfigFile(files: ScenarioFile[] | undefined): boolean {
-  return (files ?? []).some((file) => file.path === 'tsconfig.json')
+function hasTsconfigFile(options: FullScenario): boolean {
+  return options.files.some((file) => file.path === 'tsconfig.json')
 }
 
 function makeTester(options: ScenarioOptions): RuleTester {
@@ -103,20 +106,18 @@ function makeFsTester(options: ScenarioOptions, dir: string): RuleTester {
 function runTester(
   tester: RuleTester,
   rule: Rule.RuleModule,
-  options: ScenarioOptions,
+  options: ScenarioBase & { code: string; filename?: string },
   filename: string | undefined,
 ): void {
-  const isInvalid = options.errors !== undefined && options.errors.length > 0
-
   const base = {
     code: options.code,
     ...(filename !== undefined && { filename }),
   }
 
-  if (isInvalid) {
+  if (options.errors !== undefined) {
     const invalidCase = {
       ...base,
-      errors: options.errors!,
+      errors: options.errors,
       ...(options.output !== undefined && { output: options.output }),
     }
     tester.run('rule', rule, { valid: [], invalid: [invalidCase] })
@@ -125,14 +126,29 @@ function runTester(
   }
 }
 
-interface ScenarioOptions {
-  files?: ScenarioFile[]
+interface SimpleScenario extends ScenarioBase {
+  code: string
+  files?: never
+  filename?: string
+}
+
+interface FullScenario extends ScenarioBase {
+  files: ScenarioFile[]
+  filename: string
+  code?: never
+}
+
+type ScenarioOptions = SimpleScenario | FullScenario
+
+interface ScenarioBase {
   typescript?: boolean
   settings?: unknown
-  code: string
-  filename?: string
-  errors?: ScenarioError[]
+  errors?: RuleTester.InvalidTestCase['errors']
   output?: string | null
+}
+
+function isFullScenario(options: ScenarioOptions): options is FullScenario {
+  return options.files !== undefined
 }
 
 interface ScenarioFile {
@@ -140,8 +156,20 @@ interface ScenarioFile {
   content?: string
 }
 
-interface ScenarioError {
-  messageId?: string
-  message?: string
-  data?: Record<string, string>
+function getFullScenarioTargetContent(options: FullScenario): string {
+  const target = options.files.find((file) => file.path === options.filename)
+
+  if (target === undefined) {
+    throw new Error(
+      `Full scenario setup error: no file fixture matches filename "${options.filename}". Add a files entry with this path and explicit content.`,
+    )
+  }
+
+  if (target.content === undefined) {
+    throw new Error(
+      `Full scenario setup error: file fixture "${options.filename}" is missing content. Full scenarios require explicit target content.`,
+    )
+  }
+
+  return target.content
 }

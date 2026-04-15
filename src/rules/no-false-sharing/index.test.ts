@@ -39,7 +39,6 @@ scenario('alias import counts as a symbol consumer', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
 })
 
 scenario('exported symbol has two distinct consumers', rule, {
@@ -51,7 +50,6 @@ scenario('exported symbol has two distinct consumers', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Card = 1',
 })
 
 scenario('exported symbol has one consumer group', rule, {
@@ -62,7 +60,6 @@ scenario('exported symbol has one consumer group', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
   errors: [
     {
       message:
@@ -79,7 +76,6 @@ scenario('single-consumer symbol report includes consumer group', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Input = 1',
   errors: [
     {
       message:
@@ -92,7 +88,6 @@ scenario('zero-consumer symbol report indicates no consumers', rule, {
   files: [TSCONFIG, { path: 'src/ui/components/index.ts', content: 'export const Toast = 1' }],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Toast = 1',
   errors: [
     {
       message:
@@ -121,7 +116,6 @@ scenario('type-only imports satisfy sharing threshold', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/types.ts',
-  code: 'export type ButtonProps = { label: string }',
 })
 
 scenario('direct entrypoint export counts internal shared consumers', rule, {
@@ -136,7 +130,6 @@ scenario('direct entrypoint export counts internal shared consumers', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: 'export const Badge = 1',
 })
 
 scenario('re-exported symbol counts internal backing-file consumers', rule, {
@@ -152,7 +145,6 @@ scenario('re-exported symbol counts internal backing-file consumers', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: "export { helper } from './helper'",
 })
 
 scenario('multiple internal consumers collapse to one shared-module group', rule, {
@@ -171,7 +163,6 @@ scenario('multiple internal consumers collapse to one shared-module group', rule
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: "export { sharedThing } from './shared-thing'",
   errors: [
     {
       message:
@@ -192,7 +183,6 @@ scenario('internal-only consumer group remains insufficient', rule, {
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: "export { localOnly } from './local-only'",
   errors: [
     {
       message:
@@ -214,7 +204,6 @@ scenario('external deep imports of backing files do not satisfy sharing', rule, 
   ],
   settings: SHARED_SETTINGS,
   filename: 'src/ui/components/index.ts',
-  code: "export { deepOnly } from './deep-only'",
   errors: [
     {
       message:
@@ -230,7 +219,6 @@ scenario('missing tsconfig for linted file fails gracefully without reporting', 
   ],
   settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
   errors: [{ messageId: 'configurationError' }],
 })
 
@@ -243,7 +231,6 @@ scenario('semantic project setup failure fails open', rule, {
   ],
   settings: { unslop: { architecture: { 'ui/components': { shared: true } } } },
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
   errors: [{ messageId: 'configurationError' }],
 })
 
@@ -261,7 +248,6 @@ scenario(
     ],
     settings: { unslop: { architecture: { components: { shared: true } } } },
     filename: 'src/ui/components/index.ts',
-    code: 'export const Button = 1',
     errors: [{ messageId: 'configurationError' }],
   },
 )
@@ -286,5 +272,4 @@ scenario('missing architecture settings fails gracefully without reporting', rul
   ],
   settings: { unslop: {} },
   filename: 'src/ui/components/index.ts',
-  code: 'export const Button = 1',
 })

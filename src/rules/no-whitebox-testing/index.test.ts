@@ -19,7 +19,7 @@ function missingTsconfigMessage(filename: string): string {
 scenario('recognized some.test.ts file is checked', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -30,7 +30,6 @@ scenario('recognized some.test.ts file is checked', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -43,7 +42,7 @@ scenario('recognized some.test.ts file is checked', rule, {
 scenario('recognized some.spec.ts file is checked', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.spec.ts' },
+    { path: 'src/module/some.spec.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -54,7 +53,6 @@ scenario('recognized some.spec.ts file is checked', rule, {
     },
   },
   filename: 'src/module/some.spec.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -67,7 +65,7 @@ scenario('recognized some.spec.ts file is checked', rule, {
 scenario('recognized some.unit-test.ts file is checked', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.unit-test.ts' },
+    { path: 'src/module/some.unit-test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -78,7 +76,6 @@ scenario('recognized some.unit-test.ts file is checked', rule, {
     },
   },
   filename: 'src/module/some.unit-test.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -91,7 +88,7 @@ scenario('recognized some.unit-test.ts file is checked', rule, {
 scenario('recognized some.unit-spec.ts file is checked', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.unit-spec.ts' },
+    { path: 'src/module/some.unit-spec.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -102,7 +99,6 @@ scenario('recognized some.unit-spec.ts file is checked', rule, {
     },
   },
   filename: 'src/module/some.unit-spec.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -113,7 +109,11 @@ scenario('recognized some.unit-spec.ts file is checked', rule, {
 })
 
 scenario('non-test file is ignored', rule, {
-  files: [TSCONFIG_WITH_ROOT_DIR, { path: 'src/module/some.ts' }, { path: 'src/module/model.ts' }],
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/module/some.ts', content: "import { model } from './model.ts'" },
+    { path: 'src/module/model.ts' },
+  ],
   settings: {
     unslop: {
       architecture: {
@@ -122,13 +122,12 @@ scenario('non-test file is ignored', rule, {
     },
   },
   filename: 'src/module/some.ts',
-  code: "import { model } from './model.ts'",
 })
 
 scenario('test imports same-directory private sibling file', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -139,7 +138,6 @@ scenario('test imports same-directory private sibling file', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -152,7 +150,7 @@ scenario('test imports same-directory private sibling file', rule, {
 scenario('report includes offending import specifier', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
@@ -163,7 +161,6 @@ scenario('report includes offending import specifier', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { model } from './model.ts'",
   errors: [
     {
       messageId: 'usePublicEntrypoint',
@@ -176,7 +173,7 @@ scenario('report includes offending import specifier', rule, {
 scenario('test imports default index entrypoint through dot specifier', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { api } from '.'" },
     { path: 'src/module/index.ts' },
   ],
   settings: {
@@ -187,13 +184,12 @@ scenario('test imports default index entrypoint through dot specifier', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { api } from '.'",
 })
 
 scenario('test imports default index entrypoint through explicit index specifier', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { api } from './index'" },
     { path: 'src/module/index.ts' },
   ],
   settings: {
@@ -204,13 +200,12 @@ scenario('test imports default index entrypoint through explicit index specifier
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { api } from './index'",
 })
 
 scenario('test imports configured non-index entrypoint', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { api } from './public.ts'" },
     { path: 'src/module/public.ts' },
   ],
   settings: {
@@ -221,13 +216,12 @@ scenario('test imports configured non-index entrypoint', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { api } from './public.ts'",
 })
 
 scenario('test imports child submodule entrypoint', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { child } from './submodule'" },
     { path: 'src/module/submodule/index.ts' },
   ],
   settings: {
@@ -238,13 +232,12 @@ scenario('test imports child submodule entrypoint', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { child } from './submodule'",
 })
 
 scenario('test imports child submodule internal file', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { child } from './submodule/other.ts'" },
     { path: 'src/module/submodule/other.ts' },
   ],
   settings: {
@@ -255,13 +248,12 @@ scenario('test imports child submodule internal file', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { child } from './submodule/other.ts'",
 })
 
 scenario('test imports another module', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { other } from '../other/index.ts'" },
     { path: 'src/other/index.ts' },
   ],
   settings: {
@@ -273,20 +265,18 @@ scenario('test imports another module', rule, {
     },
   },
   filename: 'src/module/some.test.ts',
-  code: "import { other } from '../other/index.ts'",
 })
 
 scenario('missing architecture settings', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts' },
+    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
   settings: {
     unslop: {},
   },
   filename: 'src/module/some.test.ts',
-  code: "import { model } from './model.ts'",
 })
 
 scenario('semantic project unavailable', rule, {
@@ -296,7 +286,7 @@ scenario('semantic project unavailable', rule, {
       path: 'src/outside/tsconfig.json',
       content: '{',
     },
-    { path: 'src/outside/module/some.test.ts' },
+    { path: 'src/outside/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/outside/module/model.ts' },
   ],
   settings: {
@@ -307,7 +297,6 @@ scenario('semantic project unavailable', rule, {
     },
   },
   filename: 'src/outside/module/some.test.ts',
-  code: "import { model } from './model.ts'",
   errors: [{ messageId: 'configurationError' }],
 })
 
@@ -318,7 +307,7 @@ scenario('discovered tsconfig that excludes linted test file reports configurati
       path: 'src/outside/tsconfig.json',
       content: '{"compilerOptions":{"rootDir":"."},"include":["support/**/*.ts"]}',
     },
-    { path: 'src/outside/module/some.test.ts' },
+    { path: 'src/outside/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/outside/module/model.ts' },
   ],
   settings: {
@@ -329,7 +318,6 @@ scenario('discovered tsconfig that excludes linted test file reports configurati
     },
   },
   filename: 'src/outside/module/some.test.ts',
-  code: "import { model } from './model.ts'",
   errors: [{ messageId: 'configurationError' }],
 })
 

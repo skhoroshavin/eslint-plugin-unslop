@@ -86,21 +86,18 @@ scenario('generic factory call initializer is ignored', rule, {
 scenario('re-export does not count as a use', rule, {
   files: [TSCONFIG, { path: 'src/foo.ts', content: 'const FOO = 1\nexport { FOO }' }],
   filename: 'src/foo.ts',
-  code: 'const FOO = 1\nexport { FOO }',
   errors: [{ messageId: 'singleUse', data: { name: 'FOO', count: '0' } }],
 })
 
 scenario('aliased re-export does not count as a use', rule, {
   files: [TSCONFIG, { path: 'src/foo.ts', content: 'const FOO = 1\nexport { FOO as Bar }' }],
   filename: 'src/foo.ts',
-  code: 'const FOO = 1\nexport { FOO as Bar }',
   errors: [{ messageId: 'singleUse', data: { name: 'FOO', count: '0' } }],
 })
 
 scenario('export default identifier does not count as a use', rule, {
   files: [TSCONFIG, { path: 'src/foo.ts', content: 'const FOO = 1\nexport default FOO' }],
   filename: 'src/foo.ts',
-  code: 'const FOO = 1\nexport default FOO',
   errors: [{ messageId: 'singleUse', data: { name: 'FOO', count: '0' } }],
 })
 
@@ -114,7 +111,6 @@ scenario('exported constant used from another file counts that use', rule, {
     { path: 'src/consumer-b.ts', content: "import { FOO } from './constants'\nvoid FOO" },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
 })
 
 scenario('exported constant used only in one other file is reported', rule, {
@@ -124,7 +120,6 @@ scenario('exported constant used only in one other file is reported', rule, {
     { path: 'src/consumer.ts', content: "import { FOO } from './constants'\nvoid FOO" },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
   errors: [{ messageId: 'singleUse', data: { name: 'FOO', count: '1' } }],
 })
 
@@ -138,7 +133,6 @@ scenario('exported expression use counts toward total', rule, {
     },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
 })
 
 scenario('import declaration does not count as a use', rule, {
@@ -148,7 +142,6 @@ scenario('import declaration does not count as a use', rule, {
     { path: 'src/consumer.ts', content: "import { FOO } from './constants'" },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
   errors: [{ messageId: 'singleUse', data: { name: 'FOO', count: '0' } }],
 })
 
@@ -163,7 +156,6 @@ scenario('alias-based import and use counts as a real use', rule, {
     { path: 'src/consumer-b.ts', content: "import { FOO } from './constants'\nvoid FOO" },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
 })
 
 scenario('semantic project unavailable makes rule a no-op', rule, {
@@ -187,7 +179,6 @@ scenario('discovered tsconfig that excludes linted file reports configuration er
     { path: 'src/nested/support.ts', content: 'export const SUPPORT = 1' },
   ],
   filename: 'src/nested/constants.ts',
-  code: 'export const FOO = 1',
   errors: [{ messageId: 'configurationError' }],
 })
 
@@ -206,5 +197,4 @@ scenario('tsconfig with extends resolves inherited options and counts uses', rul
     { path: 'src/consumer-b.ts', content: "import { FOO } from './constants'\nvoid FOO" },
   ],
   filename: 'src/constants.ts',
-  code: 'export const FOO = 1',
 })
