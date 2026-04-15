@@ -14,9 +14,7 @@ import parser from '@typescript-eslint/parser'
 import { RuleTester } from 'eslint'
 import type { Rule } from 'eslint'
 
-type ScenarioSettings = {
-  architecture?: Record<string, ArchitectureModulePolicy>
-}
+type ScenarioArchitecture = Record<string, ArchitectureModulePolicy>
 
 interface ArchitectureModulePolicy {
   imports?: string[]
@@ -91,7 +89,7 @@ function makeTester(options: ScenarioOptions): RuleTester {
       options.typescript === true
         ? { parser, ecmaVersion: 'latest', sourceType: 'module' }
         : { ecmaVersion: 'latest', sourceType: 'module' },
-    settings: makeRuleTesterSettings(options.settings),
+    settings: makeRuleTesterSettings(options.architecture),
   }
   return new RuleTester(config)
 }
@@ -105,15 +103,15 @@ function makeFsTester(options: ScenarioOptions, dir: string): RuleTester {
         tsconfigRootDir: dir,
       },
     },
-    settings: makeRuleTesterSettings(options.settings),
+    settings: makeRuleTesterSettings(options.architecture),
   }
   return new RuleTester(config)
 }
 
-function makeRuleTesterSettings(settings: ScenarioSettings | undefined): {
-  unslop: ScenarioSettings
+function makeRuleTesterSettings(architecture: ScenarioArchitecture | undefined): {
+  unslop: { architecture?: ScenarioArchitecture }
 } {
-  return { unslop: settings ?? {} }
+  return architecture !== undefined ? { unslop: { architecture } } : { unslop: {} }
 }
 
 function runTester(
@@ -155,7 +153,7 @@ type ScenarioOptions = SimpleScenario | FullScenario
 
 interface ScenarioBase {
   typescript?: boolean
-  settings?: ScenarioSettings
+  architecture?: ScenarioArchitecture
   errors?: RuleTester.InvalidTestCase['errors']
   output?: string | null
 }

@@ -30,11 +30,9 @@ scenario('cross-module import declared in the allowlist is allowed', rule, {
     },
     { path: 'src/models/user/public.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [], entrypoints: ['public.ts'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [], entrypoints: ['public.ts'] },
   },
   filename: 'src/repository/user/service.ts',
 })
@@ -51,11 +49,9 @@ scenario(
       },
       { path: 'src/models/user/public.ts' },
     ],
-    settings: {
-      architecture: {
-        'repository/*': { imports: ['models/*'] },
-        'models/*': { imports: [], entrypoints: ['public.ts'] },
-      },
+    architecture: {
+      'repository/*': { imports: ['models/*'] },
+      'models/*': { imports: [], entrypoints: ['public.ts'] },
     },
     filename: 'src/repository/user/service.ts',
   },
@@ -70,11 +66,9 @@ scenario('cross-module import to configured module defaults to index entrypoint'
     },
     { path: 'src/models/user/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/service.ts',
 })
@@ -88,11 +82,9 @@ scenario('cross-module import not declared in the allowlist is reported', rule, 
       content: "import { createUserRepo } from '../../repository/user/index.ts'",
     },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/models/user/index.ts',
   errors: [{ messageId: 'notAllowed' }],
@@ -108,11 +100,9 @@ scenario('cross-module import targets internal file outside configured entrypoin
     { path: 'src/models/user/public.ts' },
     { path: 'src/models/user/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [], entrypoints: ['public.ts'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [], entrypoints: ['public.ts'] },
   },
   filename: 'src/repository/user/service.ts',
   errors: [
@@ -132,11 +122,9 @@ scenario('local cross-module namespace import is rejected', rule, {
     },
     { path: 'src/models/user/public.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [], entrypoints: ['public.ts'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [], entrypoints: ['public.ts'] },
   },
   filename: 'src/repository/user/service.ts',
   errors: [{ messageId: 'namespaceLocalForbidden' }],
@@ -150,10 +138,8 @@ scenario('external dependency namespace import is allowed', rule, {
       content: "import * as nodePath from 'node:path'\nvoid nodePath.sep",
     },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
   },
   filename: 'src/repository/user/service.ts',
 })
@@ -167,11 +153,9 @@ scenario(
       { path: 'src/index.ts', content: "import rules from './rules/public.ts'" },
       { path: 'src/rules/public.ts' },
     ],
-    settings: {
-      architecture: {
-        'index.ts': { imports: [] },
-        'rules/public.ts': { imports: [], entrypoints: ['public.ts'] },
-      },
+    architecture: {
+      'index.ts': { imports: [] },
+      'rules/public.ts': { imports: [], entrypoints: ['public.ts'] },
     },
     filename: 'src/index.ts',
   },
@@ -183,11 +167,9 @@ scenario('shallow relative import to child module default entrypoint is implicit
     { path: 'src/index.ts', content: "import rules from './rules/index.ts'" },
     { path: 'src/rules/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'index.ts': { imports: [] },
-      'rules/index.ts': { imports: [] },
-    },
+  architecture: {
+    'index.ts': { imports: [] },
+    'rules/index.ts': { imports: [] },
   },
   filename: 'src/index.ts',
 })
@@ -201,11 +183,9 @@ scenario(
       { path: 'src/index.ts', content: "import x from './rules/internal.ts'" },
       { path: 'src/rules/internal.ts' },
     ],
-    settings: {
-      architecture: {
-        'index.ts': { imports: [] },
-        rules: { imports: [] },
-      },
+    architecture: {
+      'index.ts': { imports: [] },
+      rules: { imports: [] },
     },
     filename: 'src/index.ts',
     errors: [{ messageId: 'notAllowed' }],
@@ -221,11 +201,9 @@ scenario('cross-module alias import using equivalent index specifier variant is 
     },
     { path: 'src/models/user/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/service.ts',
 })
@@ -239,10 +217,8 @@ scenario('cross-module import to anonymous module allows only index entrypoint c
     },
     { path: 'src/unknown/public/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['unknown/public'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['unknown/public'] },
   },
   filename: 'src/repository/user/service.ts',
 })
@@ -256,10 +232,8 @@ scenario('cross-module import to anonymous module non-index entrypoint is report
     },
     { path: 'src/unknown/public/types.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['unknown/public'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['unknown/public'] },
   },
   filename: 'src/repository/user/service.ts',
   errors: [{ messageId: 'nonEntrypoint' }],
@@ -274,11 +248,9 @@ scenario('same-module relative import one level deep is allowed', rule, {
     },
     { path: 'src/repository/user/helpers/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
 })
@@ -292,11 +264,9 @@ scenario('same-module relative import two levels deep is reported', rule, {
     },
     { path: 'src/repository/user/helpers/internal/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'tooDeep' }],
@@ -311,11 +281,9 @@ scenario('same-module alias import two levels deep is reported', rule, {
     },
     { path: 'src/repository/user/helpers/internal/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'tooDeep' }],
@@ -346,11 +314,9 @@ scenario('semantic project setup failure fails open without reporting', rule, {
       content: "import { createUserRepo } from '../../repository/user/index.ts'",
     },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/outside/models/user/index.ts',
   errors: [{ messageId: 'configurationError' }],
@@ -369,22 +335,18 @@ scenario('discovered tsconfig that excludes linted file reports configuration er
       content: "import { createUserRepo } from '../../repository/user/index.ts'",
     },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/outside/models/user/index.ts',
   errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('missing tsconfig reports actionable path context', rule, {
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: VIRTUAL_IMPORT_CONTROL_FILE,
   code: "import { createUserRepo } from '../../models/user/index.ts'",
@@ -405,12 +367,10 @@ scenario('exact module matcher takes precedence over wildcard matcher', rule, {
     },
     { path: 'src/models/user/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: [] },
-      'repository/special': { imports: ['models/*'] },
-      'models/*': { imports: [] },
-    },
+  architecture: {
+    'repository/*': { imports: [] },
+    'repository/special': { imports: ['models/*'] },
+    'models/*': { imports: [] },
   },
   filename: 'src/repository/special/index.ts',
 })
@@ -424,11 +384,9 @@ scenario('wildcard import allowlist pattern allows import from explicitly-named 
     },
     { path: 'src/plugins/llm/index.ts' },
   ],
-  settings: {
-    architecture: {
-      'services/*': { imports: ['plugins/*'] },
-      'plugins/llm': { imports: [] },
-    },
+  architecture: {
+    'services/*': { imports: ['plugins/*'] },
+    'plugins/llm': { imports: [] },
   },
   filename: 'src/services/api/index.ts',
 })
@@ -445,11 +403,9 @@ scenario(
       },
       { path: 'src/plugins/llm/internal/index.ts' },
     ],
-    settings: {
-      architecture: {
-        'services/*': { imports: ['plugins/*'] },
-        'plugins/llm/internal': { imports: [] },
-      },
+    architecture: {
+      'services/*': { imports: ['plugins/*'] },
+      'plugins/llm/internal': { imports: [] },
     },
     filename: 'src/services/api/index.ts',
     errors: [{ messageId: 'notAllowed' }],

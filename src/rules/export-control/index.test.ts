@@ -10,10 +10,8 @@ const TSCONFIG = {
 
 scenario('module with no exports policy allows any export', rule, {
   files: [TSCONFIG, { path: 'src/models/user/index.ts', content: 'export const anything = 1' }],
-  settings: {
-    architecture: {
-      'models/*': { imports: ['utils'] },
-    },
+  architecture: {
+    'models/*': { imports: ['utils'] },
   },
   filename: 'src/models/user/index.ts',
 })
@@ -24,10 +22,8 @@ scenario('shared entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/index.ts', content: "export * from './internal.ts'" },
     { path: 'src/shared/ui/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'shared/ui': { shared: true },
-    },
+  architecture: {
+    'shared/ui': { shared: true },
   },
   filename: 'src/shared/ui/index.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -39,10 +35,8 @@ scenario('shared types entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/types.ts', content: "export * from './internal.ts'" },
     { path: 'src/shared/ui/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'shared/ui': { shared: true },
-    },
+  architecture: {
+    'shared/ui': { shared: true },
   },
   filename: 'src/shared/ui/types.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -54,10 +48,8 @@ scenario('non-shared entrypoint uses export-all', rule, {
     { path: 'src/models/user/index.ts', content: "export * from './internal.ts'" },
     { path: 'src/models/user/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'models/*': { imports: ['utils'] },
-    },
+  architecture: {
+    'models/*': { imports: ['utils'] },
   },
   filename: 'src/models/user/index.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -68,22 +60,18 @@ scenario('exported symbol matching the regex contract is allowed', rule, {
     TSCONFIG,
     { path: 'src/repository/user/index.ts', content: 'export function createUserRepo() {}' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-      'models/*': { imports: ['utils'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+    'models/*': { imports: ['utils'] },
   },
   filename: 'src/repository/user/index.ts',
 })
 
 scenario('exported symbol violating the regex contract is reported', rule, {
   files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-      'models/*': { imports: ['utils'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+    'models/*': { imports: ['utils'] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'symbolDenied' }],
@@ -97,11 +85,9 @@ scenario(
       TSCONFIG,
       { path: 'src/repository/user/types.ts', content: 'export default function create() {}' },
     ],
-    settings: {
-      architecture: {
-        'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-        'models/*': { imports: ['utils'] },
-      },
+    architecture: {
+      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+      'models/*': { imports: ['utils'] },
     },
     filename: 'src/repository/user/types.ts',
     errors: [{ messageId: 'symbolDenied' }],
@@ -114,11 +100,9 @@ scenario('export-all in constrained entrypoint is reported', rule, {
     { path: 'src/repository/user/index.ts', content: "export * from './internal.ts'" },
     { path: 'src/repository/user/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
-      'models/*': { imports: ['utils'] },
-    },
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+    'models/*': { imports: ['utils'] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -135,10 +119,8 @@ scenario('non-entrypoint file with export-all is rejected', rule, {
     { path: 'src/utils/helpers.ts', content: "export * from './internal.ts'" },
     { path: 'src/utils/internal.ts' },
   ],
-  settings: {
-    architecture: {
-      'utils/*': { imports: ['shared/*'] },
-    },
+  architecture: {
+    'utils/*': { imports: ['shared/*'] },
   },
   filename: 'src/utils/helpers.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
