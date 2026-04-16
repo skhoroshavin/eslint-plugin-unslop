@@ -75,11 +75,6 @@ MUST NOT report imports that do not resolve to same-directory private files in t
 - **WHEN** no `settings.unslop.architecture`
 - **THEN** report nothing
 
-#### Scenario: Unsupported architecture key selector
-
-- **WHEN** architecture settings are present and contain an unsupported architecture key selector
-- **THEN** report a configuration error
-
 #### Scenario: Semantic project unavailable
 
 - **WHEN** architecture settings are present and no usable TypeScript project is available

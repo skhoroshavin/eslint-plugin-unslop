@@ -19,11 +19,6 @@
 - **WHEN** a module policy omits `entrypoints`
 - **THEN** allowed entrypoints default to `['index.ts']`
 
-#### Scenario: Unsupported architecture key selector is reported
-
-- **WHEN** `settings.unslop.architecture` contains an unsupported key selector
-- **THEN** `unslop/import-control` reports a configuration error via the shared architecture policy reader
-
 ### Requirement: Import control SHALL forbid local cross-module namespace imports
 
 `unslop/import-control` MUST reject `import * as X from '...'` when the target resolves to another local module.
@@ -50,6 +45,16 @@ Cross-module imports are forbidden unless the importer explicitly allows the tar
 #### Scenario: Undeclared cross-module edge
 
 - **WHEN** importer policy does not include the target canonical module path in `imports` and it is not a shallow relative entrypoint import
+- **THEN** report an error
+
+#### Scenario: Exact import allowlist pattern matches only exact module
+
+- **WHEN** `imports` contains `parent` and target canonical module path is `parent`
+- **THEN** allow
+
+#### Scenario: Exact import allowlist pattern does not match child module
+
+- **WHEN** `imports` contains `parent` and target canonical module path is `parent/child`
 - **THEN** report an error
 
 #### Scenario: Child wildcard import allowlist pattern matches direct child module
