@@ -101,7 +101,7 @@ test('unmatched canonical paths become anonymous modules with default policy', (
     'src/unknown/public/index.ts': 'export const value = 1',
   })
 
-  const policy = getActivePolicy({ models: { imports: [] } }, project.context)
+  const policy = getActivePolicy({}, project.context)
   expect(
     matchFileToArchitectureModule(project.file('src/unknown/public/index.ts'), policy),
   ).toEqual({

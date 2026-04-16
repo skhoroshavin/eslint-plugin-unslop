@@ -36,7 +36,7 @@ scenario('shared types entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/internal.ts' },
   ],
   architecture: {
-    'shared/ui': { shared: true, entrypoints: ['index.ts', 'types.ts'] },
+    'shared/ui': { shared: true, entrypoints: ['types.ts'] },
   },
   filename: 'src/shared/ui/types.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -89,7 +89,7 @@ scenario(
       'repository/*': {
         imports: ['models/*'],
         exports: ['^create\\w+Repo$'],
-        entrypoints: ['index.ts', 'types.ts'],
+        entrypoints: ['types.ts'],
       },
       'models/*': { imports: ['utils'] },
     },

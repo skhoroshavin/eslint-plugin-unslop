@@ -13,8 +13,6 @@ const TSCONFIG = {
 
 const SHARED_ARCHITECTURE = {
   'ui/components': { shared: true },
-  'feature-a/*': { imports: [] },
-  'feature-b/*': { imports: [] },
 }
 
 const VIRTUAL_SHARED_ENTRYPOINT = '/virtual/unslop/src/ui/components/index.ts'
@@ -112,8 +110,6 @@ scenario('type-only imports satisfy sharing threshold', rule, {
   ],
   architecture: {
     'ui/components': { shared: true, entrypoints: ['types.ts'] },
-    'feature-a/*': { imports: [] },
-    'feature-b/*': { imports: [] },
   },
   filename: 'src/ui/components/types.ts',
 })
@@ -127,8 +123,6 @@ scenario('configured shared non-index entrypoint is enforced', rule, {
   ],
   architecture: {
     'ui/components': { shared: true, entrypoints: ['public.ts'] },
-    'feature-a/*': { imports: [] },
-    'feature-b/*': { imports: [] },
   },
   filename: 'src/ui/components/public.ts',
 })

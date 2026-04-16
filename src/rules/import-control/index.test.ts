@@ -386,7 +386,6 @@ scenario('parent import allowlist entry does not allow importing a child module'
   ],
   architecture: {
     'repository/*': { imports: ['models'] },
-    models: { imports: [] },
     'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
@@ -437,7 +436,6 @@ scenario('self-or-child import allowlist entry does not allow importing a deeper
   architecture: {
     'repository/*': { imports: ['models/+'] },
     'models/*': { imports: [] },
-    'models/user/internal': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'notAllowed' }],
