@@ -110,6 +110,9 @@ test('unmatched canonical paths become anonymous modules with default policy', (
     ownerPath: 'unknown/public',
     anonymous: true,
     order: 0,
+    ownerDepth: 2,
+    isExact: true,
+    keyDepth: 2,
     policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
   })
 })

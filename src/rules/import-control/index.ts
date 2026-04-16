@@ -58,37 +58,25 @@ function checkDeclaration(
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   state: RuleState,
 ): void {
-  const edge = resolveDeclarationEdge(node, state)
-  if (edge === undefined) return
-
-  checkModuleEdge({
-    context,
-    ...edge,
-  })
-}
-
-function resolveDeclarationEdge(
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  state: RuleState,
-): DeclarationEdge | undefined {
   const specifier = getSpecifier(node)
-  if (specifier === undefined) return undefined
+  if (specifier === undefined) return
 
   const resolvedTarget = resolveImportTarget(state.filename, state.policy.projectContext, specifier)
-  if (resolvedTarget === undefined) return undefined
+  if (resolvedTarget === undefined) return
 
   const targetFile = normalizeResolvedPath(resolvedTarget)
   const importee = matchFileToArchitectureModule(targetFile, state.policy)
-  if (importee === undefined) return undefined
+  if (importee === undefined) return
 
-  return {
+  checkModuleEdge({
+    context,
     node,
     specifier,
     importerFile: state.filename,
     importer: state.moduleMatch,
     importee,
     targetFile,
-  }
+  })
 }
 
 function getSpecifier(
@@ -143,7 +131,7 @@ function isShallowRelativeEntrypoint(
   policy: { entrypoints: string[] },
 ): boolean {
   return (
-    !isRelativeTooDeep(specifier) &&
+    !isRelativeDepthTooDeep(specifier) &&
     specifier.startsWith('./') &&
     isAllowedModuleEntrypoint(targetFile, policy)
   )
@@ -155,15 +143,6 @@ function isAllowedModuleEntrypoint(targetFile: string, policy: { entrypoints: st
 
 interface EdgeCheckOptions {
   context: Rule.RuleContext
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
-  specifier: string
-  importerFile: string
-  importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
-  importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
-  targetFile: string
-}
-
-interface DeclarationEdge {
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
   specifier: string
   importerFile: string
@@ -189,22 +168,20 @@ function isSameModuleImportTooDeep(importerFile: string, targetFile: string): bo
   const importerDir = node_path.dirname(importerFile)
   if (!isInsidePath(importerDir, targetFile)) return false
   const relativeTarget = getRelativePath(importerDir, targetFile)
-  return isForwardTraversalTooDeep(relativeTarget)
+  return isRelativePathTooDeep(relativeTarget)
 }
 
-function isForwardTraversalTooDeep(relativeTarget: string): boolean {
-  const segments = relativeTarget.split('/').filter(Boolean)
+function isRelativePathTooDeep(relativePath: string): boolean {
+  const segments = relativePath.split('/').filter(Boolean)
   if (segments.length === 0) return false
   if (segments[0] === '..') return false
-  const depth = Math.max(segments.length - 1, 0)
-  return depth > 1
+  return segments.length > 2
 }
 
-function isRelativeTooDeep(specifier: string): boolean {
+function isRelativeDepthTooDeep(specifier: string): boolean {
   if (!specifier.startsWith('./')) return false
   const parts = specifier.slice(2).split('/').filter(Boolean)
-  const depth = Math.max(parts.length - 1, 0)
-  return depth > 1
+  return parts.length > 2
 }
 
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {

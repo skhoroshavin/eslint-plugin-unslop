@@ -3,8 +3,7 @@ import node_path from 'node:path'
 import type { Rule } from 'eslint'
 
 import { createConfigurationErrorListeners } from './configuration-error.js'
-import { getRequiredTypeScriptProjectContext } from './ts-program.js'
-import { formatProjectContextError } from './ts-program.js'
+import { formatProjectContextError, getRequiredTypeScriptProjectContext } from './ts-program.js'
 
 import type { ProjectContext, ProjectContextError } from './ts-program.js'
 
@@ -112,6 +111,9 @@ interface MatchedArchitectureModule {
   policy: ArchitectureModulePolicy
   order: number
   anonymous: boolean
+  ownerDepth: number
+  isExact: boolean
+  keyDepth: number
 }
 
 interface ArchitectureModulePolicy {
@@ -292,12 +294,11 @@ function readStringList(value: unknown): string[] {
 function getRecordProperty(value: unknown, key: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined
   const property = value[key]
-  if (!isRecord(property)) return undefined
-  return property
+  return isRecord(property) ? property : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
@@ -370,6 +371,9 @@ function makeMatchedModule(
   module: ArchitectureModuleDefinition,
   ownerPath: string,
 ): MatchedArchitectureModule {
+  const ownerSegments = module.pathSegments
+  const ownerDepth =
+    module.kind === 'child-wildcard' ? ownerSegments.length + 1 : ownerSegments.length
   return {
     canonicalPath,
     ownerKey: module.matcher,
@@ -377,10 +381,14 @@ function makeMatchedModule(
     policy: module.policy,
     order: module.order,
     anonymous: false,
+    ownerDepth,
+    isExact: module.kind === 'exact',
+    keyDepth: ownerSegments.length,
   }
 }
 
 function makeAnonymousModule(canonicalPath: string): MatchedArchitectureModule {
+  const segments = splitSelectorSegments(canonicalPath)
   return {
     canonicalPath,
     ownerKey: canonicalPath,
@@ -388,6 +396,9 @@ function makeAnonymousModule(canonicalPath: string): MatchedArchitectureModule {
     policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
     order: 0,
     anonymous: true,
+    ownerDepth: segments.length,
+    isExact: true,
+    keyDepth: segments.length,
   }
 }
 
@@ -400,22 +411,16 @@ function pickBestMatch(
 }
 
 function compareMatches(left: MatchedArchitectureModule, right: MatchedArchitectureModule): number {
-  const leftOwnerDepth = splitModulePath(left.ownerPath).length
-  const rightOwnerDepth = splitModulePath(right.ownerPath).length
-  if (leftOwnerDepth !== rightOwnerDepth) {
-    return rightOwnerDepth - leftOwnerDepth
+  if (left.ownerDepth !== right.ownerDepth) {
+    return right.ownerDepth - left.ownerDepth
   }
 
-  const leftExact = !left.ownerKey.endsWith('/*')
-  const rightExact = !right.ownerKey.endsWith('/*')
-  if (leftExact !== rightExact) {
-    return leftExact ? -1 : 1
+  if (left.isExact !== right.isExact) {
+    return left.isExact ? -1 : 1
   }
 
-  const leftKeyDepth = splitSelectorSegments(left.ownerKey).length
-  const rightKeyDepth = splitSelectorSegments(right.ownerKey).length
-  if (leftKeyDepth !== rightKeyDepth) {
-    return rightKeyDepth - leftKeyDepth
+  if (left.keyDepth !== right.keyDepth) {
+    return right.keyDepth - left.keyDepth
   }
 
   return left.order - right.order

@@ -129,8 +129,7 @@ function reportDeclarationExportNames(
   if (declaration === null) return
   const names = getDeclarationNamesFromExport(declaration)
   for (const name of names) {
-    if (matchesAnyPattern(name, patterns)) continue
-    context.report({ node, messageId: 'symbolDenied', data: { symbol: name } })
+    reportSymbolIfDenied(context, node, name, patterns)
   }
 }
 
@@ -139,8 +138,17 @@ function checkDefaultExport(
   node: ExportDefaultDeclaration,
   patterns: RegExp[],
 ): void {
-  if (matchesAnyPattern('default', patterns)) return
-  context.report({ node, messageId: 'symbolDenied', data: { symbol: 'default' } })
+  reportSymbolIfDenied(context, node, 'default', patterns)
+}
+
+function reportSymbolIfDenied(
+  context: Rule.RuleContext,
+  node: ExportNamedDeclaration | ExportDefaultDeclaration,
+  symbol: string,
+  patterns: RegExp[],
+): void {
+  if (matchesAnyPattern(symbol, patterns)) return
+  context.report({ node, messageId: 'symbolDenied', data: { symbol } })
 }
 
 function checkExportAll(context: Rule.RuleContext, node: ExportAllDeclaration): void {
