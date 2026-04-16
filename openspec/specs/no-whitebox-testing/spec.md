@@ -68,12 +68,12 @@ MUST NOT report imports that do not resolve to same-directory private files in t
 
 ### Requirement: no-whitebox-testing SHALL fail open when architecture analysis is unavailable
 
-`unslop/no-whitebox-testing` MUST remain a no-op when architecture settings are absent. When architecture settings are present but the shared `architecture-config` capability cannot be loaded, contains unsupported key selectors, or required TypeScript semantic context is unavailable, invalid, or excludes the linted test file, the rule MUST report a configuration error instead of silently skipping checks.
+`unslop/no-whitebox-testing` operates on anonymous module defaults when architecture settings are absent. When architecture settings are present but the shared `architecture-config` capability cannot be loaded, contains unsupported key selectors, or required TypeScript semantic context is unavailable, invalid, or excludes the linted test file, the rule MUST report a configuration error instead of silently skipping checks.
 
-#### Scenario: Missing architecture settings
+#### Scenario: Architecture settings absent
 
 - **WHEN** no `settings.unslop.architecture`
-- **THEN** report nothing
+- **THEN** apply anonymous module defaults (deny same-directory private imports except entrypoints)
 
 #### Scenario: Semantic project unavailable
 

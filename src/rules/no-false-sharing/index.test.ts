@@ -273,15 +273,6 @@ scenario('missing tsconfig error includes linted file and search root', rule, {
   ],
 })
 
-scenario('missing architecture settings fails gracefully without reporting', rule, {
-  files: [
-    TSCONFIG,
-    { path: 'src/ui/components/index.ts', content: 'export const Button = 1' },
-    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
-  ],
-  filename: 'src/ui/components/index.ts',
-})
-
 scenario('unsupported architecture key selector reports a configuration error', rule, {
   files: [TSCONFIG, { path: 'src/ui/components/index.ts', content: 'export const Button = 1' }],
   architecture: { 'ui/+': { shared: true } },

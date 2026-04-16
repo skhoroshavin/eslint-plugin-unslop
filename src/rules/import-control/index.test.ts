@@ -154,8 +154,7 @@ scenario(
       { path: 'src/rules/public.ts' },
     ],
     architecture: {
-      '.': { imports: [] },
-      rules: { imports: [], entrypoints: ['public.ts'] },
+      rules: { entrypoints: ['public.ts'] },
     },
     filename: 'src/index.ts',
   },
@@ -167,10 +166,6 @@ scenario('shallow relative import to child module default entrypoint is implicit
     { path: 'src/index.ts', content: "import rules from './rules/index.ts'" },
     { path: 'src/rules/index.ts' },
   ],
-  architecture: {
-    '.': { imports: [] },
-    rules: { imports: [] },
-  },
   filename: 'src/index.ts',
 })
 
@@ -183,10 +178,6 @@ scenario(
       { path: 'src/index.ts', content: "import x from './rules/internal.ts'" },
       { path: 'src/rules/internal.ts' },
     ],
-    architecture: {
-      '.': { imports: [] },
-      rules: { imports: [] },
-    },
     filename: 'src/index.ts',
     errors: [{ messageId: 'notAllowed' }],
   },
@@ -283,22 +274,9 @@ scenario('same-module alias import two levels deep is reported', rule, {
   ],
   architecture: {
     'repository/*': { imports: ['models/*'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'tooDeep' }],
-})
-
-scenario('missing architecture settings fails gracefully without reporting', rule, {
-  files: [
-    TSCONFIG_WITH_ROOT_DIR,
-    {
-      path: 'src/models/user/index.ts',
-      content: "import { createUserRepo } from '../../repository/user/index.ts'",
-    },
-    { path: 'src/repository/user/index.ts' },
-  ],
-  filename: 'src/models/user/index.ts',
 })
 
 scenario('semantic project setup failure fails open without reporting', rule, {
@@ -316,7 +294,6 @@ scenario('semantic project setup failure fails open without reporting', rule, {
   ],
   architecture: {
     'repository/*': { imports: ['models/*'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/outside/models/user/index.ts',
   errors: [{ messageId: 'configurationError' }],
@@ -337,7 +314,6 @@ scenario('discovered tsconfig that excludes linted file reports configuration er
   ],
   architecture: {
     'repository/*': { imports: ['models/*'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/outside/models/user/index.ts',
   errors: [{ messageId: 'configurationError' }],
@@ -346,7 +322,6 @@ scenario('discovered tsconfig that excludes linted file reports configuration er
 scenario('missing tsconfig reports actionable path context', rule, {
   architecture: {
     'repository/*': { imports: ['models/*'] },
-    'models/*': { imports: [] },
   },
   filename: VIRTUAL_IMPORT_CONTROL_FILE,
   code: "import { createUserRepo } from '../../models/user/index.ts'",
@@ -370,7 +345,6 @@ scenario('exact module matcher takes precedence over wildcard matcher', rule, {
   architecture: {
     'repository/*': { imports: [] },
     'repository/special': { imports: ['models/*'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/repository/special/index.ts',
 })
@@ -386,7 +360,6 @@ scenario('parent import allowlist entry does not allow importing a child module'
   ],
   architecture: {
     'repository/*': { imports: ['models'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'notAllowed' }],
@@ -403,7 +376,6 @@ scenario('self-or-child import allowlist entry allows importing the parent modul
   ],
   architecture: {
     'repository/*': { imports: ['models/+'] },
-    models: { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
 })
@@ -419,7 +391,6 @@ scenario('self-or-child import allowlist entry allows importing a direct child m
   ],
   architecture: {
     'repository/*': { imports: ['models/+'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
 })
@@ -435,7 +406,6 @@ scenario('self-or-child import allowlist entry does not allow importing a deeper
   ],
   architecture: {
     'repository/*': { imports: ['models/+'] },
-    'models/*': { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'notAllowed' }],
@@ -452,7 +422,6 @@ scenario('models child allowlist does not match the parent entrypoint module', r
   ],
   architecture: {
     'repository/*': { imports: ['models/*'] },
-    models: { imports: [] },
   },
   filename: 'src/repository/user/index.ts',
   errors: [{ messageId: 'notAllowed' }],
@@ -490,7 +459,6 @@ scenario('wildcard import allowlist pattern allows import from explicitly-named 
   ],
   architecture: {
     'services/*': { imports: ['plugins/*'] },
-    'plugins/llm': { imports: [] },
   },
   filename: 'src/services/api/index.ts',
 })
@@ -509,7 +477,6 @@ scenario(
     ],
     architecture: {
       'services/*': { imports: ['plugins/*'] },
-      'plugins/llm/internal': { imports: [] },
     },
     filename: 'src/services/api/index.ts',
     errors: [{ messageId: 'notAllowed' }],

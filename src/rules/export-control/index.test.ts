@@ -112,11 +112,6 @@ scenario('export-all in constrained entrypoint is reported', rule, {
   errors: [{ messageId: 'exportAllForbidden' }],
 })
 
-scenario('missing architecture settings fails gracefully without reporting', rule, {
-  files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
-  filename: 'src/repository/user/index.ts',
-})
-
 scenario('unsupported architecture key selector reports a configuration error', rule, {
   files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
   architecture: {

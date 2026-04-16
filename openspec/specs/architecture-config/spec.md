@@ -13,10 +13,10 @@ The plugin SHALL read architecture policy from `settings.unslop.architecture`. P
 - **WHEN** ESLint evaluates a file with `settings.unslop.architecture` configured
 - **THEN** architecture-aware rules MUST use that shared policy
 
-#### Scenario: Architecture settings are missing
+#### Scenario: Architecture settings are absent
 
 - **WHEN** architecture-aware rules run without `settings.unslop.architecture`
-- **THEN** they MUST fail gracefully without throwing
+- **THEN** they MUST apply anonymous module defaults to all files
 
 #### Scenario: Configured module omits entrypoints
 

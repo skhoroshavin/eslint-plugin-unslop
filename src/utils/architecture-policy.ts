@@ -125,11 +125,8 @@ interface ArchitectureModulePolicy {
 
 function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicyState {
   const architecture = getArchitectureSettings(context.settings)
-  if (architecture === undefined) return { kind: 'inactive' }
-
   const modules = parseArchitectureModules(architecture)
   if (modules.kind !== 'active') return modules
-  if (modules.modules.length === 0) return { kind: 'inactive' }
 
   const projectContext = getRequiredTypeScriptProjectContext(context.filename)
   if (projectContext.kind !== 'active') {
@@ -163,9 +160,10 @@ function getArchitectureSettings(settings: unknown): Record<string, unknown> | u
 }
 
 function parseArchitectureModules(
-  architecture: Record<string, unknown>,
+  architecture: Record<string, unknown> | undefined,
 ): ParsedArchitectureModulesResult {
   const modules: ArchitectureModuleDefinition[] = []
+  if (architecture === undefined) return { kind: 'active', modules }
   let order = 0
   for (const [matcher, rawPolicy] of Object.entries(architecture)) {
     const parsedMatcher = parseArchitectureMatcher(matcher)

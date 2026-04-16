@@ -9,10 +9,10 @@
 - **WHEN** ESLint evaluates a file with `settings.unslop.architecture` configured
 - **THEN** `unslop/import-control` uses that shared policy
 
-#### Scenario: Architecture settings are missing
+#### Scenario: Architecture settings are absent
 
 - **WHEN** `unslop/import-control` runs without `settings.unslop.architecture`
-- **THEN** the rule fails gracefully without throwing
+- **THEN** the rule applies anonymous module defaults (deny all cross-module imports, allow only index entrypoints)
 
 #### Scenario: Configured module omits entrypoints
 

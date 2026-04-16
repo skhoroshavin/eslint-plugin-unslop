@@ -22,9 +22,6 @@ scenario('recognized some.test.ts file is checked', rule, {
     { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
   errors: [
     {
@@ -41,9 +38,6 @@ scenario('recognized some.spec.ts file is checked', rule, {
     { path: 'src/module/some.spec.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.spec.ts',
   errors: [
     {
@@ -60,9 +54,6 @@ scenario('recognized some.unit-test.ts file is checked', rule, {
     { path: 'src/module/some.unit-test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.unit-test.ts',
   errors: [
     {
@@ -79,9 +70,6 @@ scenario('recognized some.unit-spec.ts file is checked', rule, {
     { path: 'src/module/some.unit-spec.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.unit-spec.ts',
   errors: [
     {
@@ -98,9 +86,6 @@ scenario('non-test file is ignored', rule, {
     { path: 'src/module/some.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.ts',
 })
 
@@ -129,9 +114,6 @@ scenario('report includes offending import specifier', rule, {
     { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
   errors: [
     {
@@ -148,9 +130,6 @@ scenario('test imports default index entrypoint through dot specifier', rule, {
     { path: 'src/module/some.test.ts', content: "import { api } from '.'" },
     { path: 'src/module/index.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
 })
 
@@ -160,9 +139,6 @@ scenario('test imports default index entrypoint through explicit index specifier
     { path: 'src/module/some.test.ts', content: "import { api } from './index'" },
     { path: 'src/module/index.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
 })
 
@@ -184,9 +160,6 @@ scenario('test imports child submodule entrypoint', rule, {
     { path: 'src/module/some.test.ts', content: "import { child } from './submodule'" },
     { path: 'src/module/submodule/index.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
 })
 
@@ -196,9 +169,6 @@ scenario('test imports child submodule internal file', rule, {
     { path: 'src/module/some.test.ts', content: "import { child } from './submodule/other.ts'" },
     { path: 'src/module/submodule/other.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/module/some.test.ts',
 })
 
@@ -209,7 +179,6 @@ scenario('test imports configured non-index entrypoint from the current owned su
     { path: 'src/module/a/public.ts' },
   ],
   architecture: {
-    module: {},
     'module/*': { entrypoints: ['public.ts'] },
   },
   filename: 'src/module/a/some.test.ts',
@@ -222,7 +191,6 @@ scenario('test imports private sibling from the current owned subtree', rule, {
     { path: 'src/module/a/model.ts' },
   ],
   architecture: {
-    module: {},
     'module/*': { entrypoints: ['public.ts'] },
   },
   filename: 'src/module/a/some.test.ts',
@@ -253,19 +221,6 @@ scenario('test imports another module', rule, {
     { path: 'src/module/some.test.ts', content: "import { other } from '../other/index.ts'" },
     { path: 'src/other/index.ts' },
   ],
-  architecture: {
-    module: {},
-    other: {},
-  },
-  filename: 'src/module/some.test.ts',
-})
-
-scenario('missing architecture settings', rule, {
-  files: [
-    TSCONFIG_WITH_ROOT_DIR,
-    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
-    { path: 'src/module/model.ts' },
-  ],
   filename: 'src/module/some.test.ts',
 })
 
@@ -292,9 +247,6 @@ scenario('semantic project unavailable', rule, {
     { path: 'src/outside/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/outside/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/outside/module/some.test.ts',
   errors: [{ messageId: 'configurationError' }],
 })
@@ -309,17 +261,11 @@ scenario('discovered tsconfig that excludes linted test file reports configurati
     { path: 'src/outside/module/some.test.ts', content: "import { model } from './model.ts'" },
     { path: 'src/outside/module/model.ts' },
   ],
-  architecture: {
-    module: {},
-  },
   filename: 'src/outside/module/some.test.ts',
   errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('missing tsconfig reports linted file and search root', rule, {
-  architecture: {
-    module: {},
-  },
   filename: VIRTUAL_TEST_FILE,
   code: "import { model } from './model.ts'",
   errors: [
