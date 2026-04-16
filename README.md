@@ -86,7 +86,7 @@ Each value is a policy object:
 ```ts
 {
   imports?: string[]  // exact module, direct child via /*, self-or-child via /+, or '*' for all
-  exports?: string[]  // regex patterns symbols exported from index.ts/types.ts must match
+  exports?: string[]  // regex patterns symbols exported from entrypoints must match
   entrypoints?: string[] // public files allowed for external and test imports
   shared?: boolean    // marks module as shared; enables no-false-sharing
 }
@@ -111,7 +111,7 @@ Customs control for your modules: you declare which modules are allowed to impor
 
 Deny-by-default for cross-module imports, so forgetting to declare a dependency is a loud error rather than a silent free-for-all. It also enforces:
 
-- cross-module imports must arrive through the public gate (`index.ts` or `types.ts`)
+- cross-module imports must arrive through the public gate (configured entrypoints)
 - local cross-module namespace imports are forbidden (`import * as X from '<local-module>'`)
 - same-module relative imports can only go one level deeper - no tunnelling into internals
 - files that don't match any declared module become anonymous modules and are denied by default
@@ -128,7 +128,7 @@ This rule only checks recognized test filenames (`*.test.*`, `*.spec.*`, `*.*-te
 
 The customs declaration form for the other direction: what are you actually exporting from your module's public entrypoints?
 
-When a module defines `exports` regex patterns, every symbol exported from its `index.ts` or `types.ts` must match at least one pattern - otherwise it's stopped at the gate. Modules without `exports` are waved through by default, so you can adopt this gradually. Regardless of module policy, `export * from ...` is rejected in public entrypoints so symbol provenance stays explicit.
+When a module defines `exports` regex patterns, every symbol exported from its entrypoints must match at least one pattern - otherwise it's stopped at the gate. Modules without `exports` are waved through by default, so you can adopt this gradually. Regardless of module policy, `export * from ...` is rejected in public entrypoints so symbol provenance stays explicit.
 
 ### `unslop/no-false-sharing`
 
@@ -155,7 +155,7 @@ src/shared/index.ts
   -> imported only by src/features/calendar/view.ts
   -> error: symbol "formatDate" has 1 consumer group(s) (group: features/calendar)
 
-src/shared/types.ts
+src/shared/index.ts
   export type LegacyOptions = ...
   -> not imported by anyone
   -> error: symbol "LegacyOptions" has 0 consumer group(s) (no consumers found)

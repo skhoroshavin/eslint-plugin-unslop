@@ -77,7 +77,8 @@ function buildRuleState(context: Rule.RuleContext): RuleState {
     return { kind: 'context-error', error: state.error }
   }
   if (state.kind !== 'active') return { kind: 'inactive' }
-  if (!isRuleEntrypoint(state.filename)) return { kind: 'inactive' }
+  if (!isEntrypointFile(state.filename, state.moduleMatch.policy.entrypoints))
+    return { kind: 'inactive' }
   if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 
   const built = buildPatterns(state.moduleMatch.policy.exports)
@@ -159,20 +160,9 @@ function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(symbol))
 }
 
-function isRuleEntrypoint(filePath: string): boolean {
-  return RULE_ENTRYPOINT_FILES.has(node_path.basename(filePath))
+function isEntrypointFile(filePath: string, entrypoints: string[]): boolean {
+  return entrypoints.includes(node_path.basename(filePath))
 }
-
-const RULE_ENTRYPOINT_FILES = new Set([
-  'index.ts',
-  'index.tsx',
-  'index.js',
-  'index.jsx',
-  'types.ts',
-  'types.tsx',
-  'types.js',
-  'types.jsx',
-])
 
 type RuleState =
   | { kind: 'inactive' }

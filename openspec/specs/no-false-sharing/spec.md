@@ -21,7 +21,7 @@ Empty options schema (`schema: []`). All module ownership and policy configurati
 
 ### Requirement: no-false-sharing SHALL evaluate shared entrypoint exports at symbol granularity
 
-Evaluate whether symbols exported from shared module entrypoints (`index.ts` and `types.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count. When semantic context cannot be established for an analyzed file, the rule MUST report a configuration error.
+Evaluate whether symbols exported from shared module entrypoints (configured `entrypoints`, defaulting to `index.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count. When semantic context cannot be established for an analyzed file, the rule MUST report a configuration error.
 
 #### Scenario: Exported symbol has two distinct consumers
 
