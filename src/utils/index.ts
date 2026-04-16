@@ -1,6 +1,6 @@
 export {
+  getArchitectureRuleListenerState,
   getArchitectureRuleState,
-  isPublicEntrypoint,
   matchFileToArchitectureModule,
 } from './architecture-policy.js'
 

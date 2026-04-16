@@ -110,8 +110,27 @@ scenario('type-only imports satisfy sharing threshold', rule, {
         "import type { ButtonProps } from '@/ui/components/types'\nconst value: ButtonProps = { label: 'b' }\nvoid value",
     },
   ],
-  architecture: SHARED_ARCHITECTURE,
+  architecture: {
+    'ui/components': { shared: true, entrypoints: ['types.ts'] },
+    'feature-a/*': { imports: [] },
+    'feature-b/*': { imports: [] },
+  },
   filename: 'src/ui/components/types.ts',
+})
+
+scenario('configured shared non-index entrypoint is enforced', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/ui/components/public.ts', content: 'export const Button = 1' },
+    { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components/public'" },
+    { path: 'src/feature-b/screen.ts', content: "import { Button } from '@/ui/components/public'" },
+  ],
+  architecture: {
+    'ui/components': { shared: true, entrypoints: ['public.ts'] },
+    'feature-a/*': { imports: [] },
+    'feature-b/*': { imports: [] },
+  },
+  filename: 'src/ui/components/public.ts',
 })
 
 scenario('direct entrypoint export counts internal shared consumers', rule, {
@@ -267,4 +286,11 @@ scenario('missing architecture settings fails gracefully without reporting', rul
     { path: 'src/feature-a/screen.ts', content: "import { Button } from '@/ui/components'" },
   ],
   filename: 'src/ui/components/index.ts',
+})
+
+scenario('unsupported architecture key selector reports a configuration error', rule, {
+  files: [TSCONFIG, { path: 'src/ui/components/index.ts', content: 'export const Button = 1' }],
+  architecture: { 'ui/+': { shared: true } },
+  filename: 'src/ui/components/index.ts',
+  errors: [{ messageId: 'configurationError' }],
 })

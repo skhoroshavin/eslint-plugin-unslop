@@ -5,8 +5,7 @@ import type { Rule } from 'eslint'
 import type { ImportDeclaration } from 'estree'
 
 import {
-  createConfigurationErrorListeners,
-  formatProjectContextError,
+  getArchitectureRuleListenerState,
   getArchitectureRuleState,
   isSamePath,
   matchFileToArchitectureModule,
@@ -31,16 +30,14 @@ export default {
   create(context) {
     if (!isRecognizedTestFile(context.filename)) return {}
 
-    const state = getArchitectureRuleState(context)
-    if (state.kind === 'context-error') {
-      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
-    }
-
-    if (state.kind !== 'active') return {}
+    const state = getArchitectureRuleListenerState(context)
+    if (state.kind === 'listener') return state.listener
+    if (state.state.kind !== 'active') return {}
+    const activeState = state.state
 
     return {
       ImportDeclaration(node) {
-        checkImportDeclaration(context, node, state)
+        checkImportDeclaration(context, node, activeState)
       },
     }
   },
@@ -53,7 +50,7 @@ function checkImportDeclaration(
 ): void {
   const resolvedImport = resolveImport(node, state)
   if (resolvedImport === undefined) return
-  if (resolvedImport.targetModule.instance !== state.moduleMatch.instance) return
+  if (resolvedImport.targetModule.ownerPath !== state.moduleMatch.ownerPath) return
   if (!isSameDirectoryImport(state.filename, resolvedImport.targetFile)) return
   if (isAllowedModuleEntrypoint(resolvedImport.targetFile, state.moduleMatch.policy.entrypoints))
     return

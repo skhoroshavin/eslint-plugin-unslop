@@ -113,6 +113,28 @@ scenario('missing architecture settings fails gracefully without reporting', rul
   filename: 'src/repository/user/index.ts',
 })
 
+scenario('unsupported architecture key selector reports a configuration error', rule, {
+  files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
+  architecture: {
+    'repository/+': { imports: [], exports: ['^create\\w+Repo$'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('invalid tsconfig reports a configuration error when architecture is configured', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/repository/tsconfig.json', content: '{' },
+    { path: 'src/repository/user/index.ts', content: 'export const helper = 1' },
+  ],
+  architecture: {
+    'repository/*': { imports: [], exports: ['^create\\w+Repo$'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'configurationError' }],
+})
+
 scenario('non-entrypoint file with export-all is rejected', rule, {
   files: [
     TSCONFIG,

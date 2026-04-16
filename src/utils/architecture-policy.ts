@@ -2,11 +2,29 @@ import node_path from 'node:path'
 
 import type { Rule } from 'eslint'
 
+import { createConfigurationErrorListeners } from './configuration-error.js'
 import { getRequiredTypeScriptProjectContext } from './ts-program.js'
+import { formatProjectContextError } from './ts-program.js'
 
 import type { ProjectContext, ProjectContextError } from './ts-program.js'
 
 import { getRelativePath, normalizePath, trimSlashes } from './tsconfig-resolution.js'
+
+export function getArchitectureRuleListenerState(
+  context: Rule.RuleContext,
+): ArchitectureRuleListenerState {
+  const state = getArchitectureRuleState(context)
+  if (state.kind === 'config-error') {
+    return { kind: 'listener', listener: createConfigurationErrorListeners(context, state.details) }
+  }
+  if (state.kind === 'context-error') {
+    return {
+      kind: 'listener',
+      listener: createConfigurationErrorListeners(context, formatProjectContextError(state.error)),
+    }
+  }
+  return { kind: 'state', state }
+}
 
 export function getArchitectureRuleState(context: Rule.RuleContext): ArchitectureRuleState {
   const filename = context.filename
@@ -21,35 +39,39 @@ export function getArchitectureRuleState(context: Rule.RuleContext): Architectur
   return { kind: 'active', filename, policy: policy.policy, moduleMatch }
 }
 
+export function createArchitecturePolicy(
+  architecture: Record<string, unknown>,
+  projectContext: ProjectContext,
+): ArchitecturePolicyState {
+  const modules = parseArchitectureModules(architecture)
+  if (modules.kind !== 'active') return modules
+  return { kind: 'active', policy: { projectContext, modules: modules.modules } }
+}
+
 export function matchFileToArchitectureModule(
   filePath: string,
   policy: ArchitecturePolicy,
 ): MatchedArchitectureModule | undefined {
+  const canonicalPath = getCanonicalModulePath(filePath, policy.projectContext)
+  if (canonicalPath === undefined) return undefined
+
+  const matches = collectModuleMatches(canonicalPath, policy.modules)
+  return pickBestMatch(matches) ?? makeAnonymousModule(canonicalPath)
+}
+
+export function getCanonicalModulePath(
+  filePath: string,
+  projectContext: ProjectContext,
+): string | undefined {
   const normalized = normalizePath(filePath)
-  const candidatePath = applySourceRoot(normalized, policy.projectContext)
+  const candidatePath = applySourceRoot(normalized, projectContext)
   if (candidatePath === undefined) return undefined
-  const segments = splitPathSegments(candidatePath)
-  const matches = collectModuleMatches(segments, policy.modules)
-  return pickBestMatch(matches) ?? makeDefaultModule(candidatePath)
+  return getContainingModulePath(candidatePath)
 }
-
-export function isPublicEntrypoint(filePath: string): boolean {
-  return ENTRYPOINT_FILES.has(node_path.basename(filePath))
-}
-
-const ENTRYPOINT_FILES = new Set([
-  'index.ts',
-  'index.tsx',
-  'index.js',
-  'index.jsx',
-  'types.ts',
-  'types.tsx',
-  'types.js',
-  'types.jsx',
-])
 
 type ArchitectureRuleState =
   | { kind: 'inactive' }
+  | { kind: 'config-error'; details: string }
   | { kind: 'context-error'; filename: string; error: ProjectContextError }
   | {
       kind: 'active'
@@ -58,24 +80,6 @@ type ArchitectureRuleState =
       moduleMatch: MatchedArchitectureModule
     }
 
-function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicyState {
-  const architecture = getArchitectureSettings(context.settings)
-  if (architecture === undefined) return { kind: 'inactive' }
-
-  const modules = parseArchitectureModules(architecture)
-  if (modules.length === 0) return { kind: 'inactive' }
-
-  const projectContext = getRequiredTypeScriptProjectContext(context.filename)
-  if (projectContext.kind !== 'active') {
-    return getArchitectureContextErrorState(context.filename, modules, projectContext.error)
-  }
-
-  return {
-    kind: 'active',
-    policy: { projectContext: projectContext.projectContext, modules },
-  }
-}
-
 interface ArchitecturePolicy {
   projectContext: ProjectContext
   modules: ArchitectureModuleDefinition[]
@@ -83,8 +87,58 @@ interface ArchitecturePolicy {
 
 type ArchitecturePolicyState =
   | { kind: 'inactive' }
+  | { kind: 'config-error'; details: string }
   | { kind: 'context-error'; filename: string; error: ProjectContextError }
   | { kind: 'active'; policy: ArchitecturePolicy }
+
+interface ArchitectureModuleDefinition {
+  matcher: string
+  kind: ArchitectureSelectorKind
+  pathSegments: string[]
+  policy: ArchitectureModulePolicy
+  order: number
+}
+
+type ArchitectureSelectorKind = 'exact' | 'child-wildcard'
+
+type ArchitectureRuleListenerState =
+  | { kind: 'listener'; listener: Rule.RuleListener }
+  | { kind: 'state'; state: ArchitectureRuleState }
+
+interface MatchedArchitectureModule {
+  canonicalPath: string
+  ownerKey: string
+  ownerPath: string
+  policy: ArchitectureModulePolicy
+  order: number
+  anonymous: boolean
+}
+
+interface ArchitectureModulePolicy {
+  imports: string[]
+  exports: string[]
+  entrypoints: string[]
+  shared: boolean
+}
+
+function readArchitecturePolicy(context: Rule.RuleContext): ArchitecturePolicyState {
+  const architecture = getArchitectureSettings(context.settings)
+  if (architecture === undefined) return { kind: 'inactive' }
+
+  const modules = parseArchitectureModules(architecture)
+  if (modules.kind !== 'active') return modules
+  if (modules.modules.length === 0) return { kind: 'inactive' }
+
+  const projectContext = getRequiredTypeScriptProjectContext(context.filename)
+  if (projectContext.kind !== 'active') {
+    return getArchitectureContextErrorState(context.filename, modules.modules, projectContext.error)
+  }
+
+  return {
+    kind: 'active',
+    policy: { projectContext: projectContext.projectContext, modules: modules.modules },
+  }
+}
 
 function getArchitectureContextErrorState(
   filename: string,
@@ -108,17 +162,106 @@ function getArchitectureSettings(settings: unknown): Record<string, unknown> | u
 
 function parseArchitectureModules(
   architecture: Record<string, unknown>,
-): ArchitectureModuleDefinition[] {
+): ParsedArchitectureModulesResult {
   const modules: ArchitectureModuleDefinition[] = []
   let order = 0
   for (const [matcher, rawPolicy] of Object.entries(architecture)) {
-    if (!isValidMatcher(matcher)) continue
-    const parsed = parseModulePolicy(rawPolicy)
-    if (parsed === undefined) continue
-    modules.push({ matcher: trimSlashes(matcher), policy: parsed, order })
+    const parsedMatcher = parseArchitectureMatcher(matcher)
+    if (parsedMatcher.kind !== 'valid') return parsedMatcher
+
+    const parsedPolicy = parseModulePolicy(rawPolicy)
+    if (parsedPolicy === undefined) continue
+
+    modules.push({
+      matcher: parsedMatcher.matcher,
+      kind: parsedMatcher.selectorKind,
+      pathSegments: parsedMatcher.pathSegments,
+      policy: parsedPolicy,
+      order,
+    })
     order += 1
   }
-  return modules
+  return { kind: 'active', modules }
+}
+
+type ParsedArchitectureModulesResult =
+  | { kind: 'config-error'; details: string }
+  | { kind: 'active'; modules: ArchitectureModuleDefinition[] }
+
+function parseArchitectureMatcher(matcher: string): ParsedArchitectureMatcherResult {
+  const normalizedMatcher = normalizeArchitectureMatcher(matcher)
+  if (normalizedMatcher === undefined) {
+    return { kind: 'config-error', details: getUnsupportedArchitectureKeyDetails(matcher) }
+  }
+
+  if (normalizedMatcher === '.') {
+    return {
+      kind: 'valid',
+      matcher: normalizedMatcher,
+      selectorKind: 'exact',
+      pathSegments: [],
+    }
+  }
+
+  const segments = splitSelectorSegments(normalizedMatcher)
+  const wildcard = segments.at(-1) === '*'
+  if (!isSupportedArchitectureSelector(segments, wildcard)) {
+    return { kind: 'config-error', details: getUnsupportedArchitectureKeyDetails(matcher) }
+  }
+
+  return wildcard
+    ? {
+        kind: 'valid',
+        matcher: normalizedMatcher,
+        selectorKind: 'child-wildcard',
+        pathSegments: segments.slice(0, -1),
+      }
+    : {
+        kind: 'valid',
+        matcher: normalizedMatcher,
+        selectorKind: 'exact',
+        pathSegments: segments,
+      }
+}
+
+type ParsedArchitectureMatcherResult =
+  | { kind: 'config-error'; details: string }
+  | {
+      kind: 'valid'
+      matcher: string
+      selectorKind: ArchitectureSelectorKind
+      pathSegments: string[]
+    }
+
+function normalizeArchitectureMatcher(matcher: string): string | undefined {
+  const trimmed = trimSlashes(matcher.trim())
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function isSupportedArchitectureSelector(segments: string[], wildcard: boolean): boolean {
+  if (segments.length === 0) return false
+  if (wildcard && segments.length === 1) return false
+  if (segments.some((segment) => segment === '.' || segment === '..')) return false
+
+  const finalIndex = segments.length - 1
+  return segments.every((segment, index) => {
+    if (wildcard && index === finalIndex) return segment === '*'
+    return isNamedArchitectureSegment(segment)
+  })
+}
+
+function isNamedArchitectureSegment(segment: string): boolean {
+  if (segment.length === 0) return false
+  if (segment.includes('*') || segment.includes('+')) return false
+  return !isFileShapedSegment(segment)
+}
+
+function isFileShapedSegment(segment: string): boolean {
+  return /\.[A-Za-z0-9]+$/.test(segment)
+}
+
+function getUnsupportedArchitectureKeyDetails(matcher: string): string {
+  return `unsupported architecture key selector "${matcher}". Use ".", directory-shaped selectors like "models", or terminal child selectors like "models/*".`
 }
 
 function parseModulePolicy(rawPolicy: unknown): ArchitectureModulePolicy | undefined {
@@ -146,11 +289,6 @@ function readStringList(value: unknown): string[] {
   return result
 }
 
-function isValidMatcher(matcher: string): boolean {
-  if (matcher.trim().length === 0) return false
-  return !matcher.includes('**')
-}
-
 function getRecordProperty(value: unknown, key: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined
   const property = value[key]
@@ -160,18 +298,6 @@ function getRecordProperty(value: unknown, key: string): Record<string, unknown>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function makeDefaultModule(relativePath: string): MatchedArchitectureModule {
-  const segments = splitPathSegments(relativePath)
-  const dirSegments = segments.slice(0, -1)
-  const key = dirSegments.length > 0 ? dirSegments.join('/') : (segments[0] ?? '.')
-  return {
-    matcher: key,
-    instance: key,
-    policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
-    order: 0,
-  }
 }
 
 function applySourceRoot(pathValue: string, projectContext: ProjectContext): string | undefined {
@@ -187,13 +313,20 @@ function applySourceRoot(pathValue: string, projectContext: ProjectContext): str
   return sourceRelative
 }
 
+function getContainingModulePath(relativePath: string): string {
+  const segments = splitSelectorSegments(relativePath)
+  if (segments.length <= 1) return '.'
+  return joinModulePath(segments.slice(0, -1))
+}
+
 function collectModuleMatches(
-  segments: string[],
+  canonicalPath: string,
   modules: ArchitectureModuleDefinition[],
 ): MatchedArchitectureModule[] {
+  const canonicalSegments = splitModulePath(canonicalPath)
   const matches: MatchedArchitectureModule[] = []
   for (const module of modules) {
-    const matched = matchModuleAtOffset0(segments, module)
+    const matched = matchArchitectureModule(canonicalPath, canonicalSegments, module)
     if (matched !== undefined) {
       matches.push(matched)
     }
@@ -201,49 +334,61 @@ function collectModuleMatches(
   return matches
 }
 
-function matchModuleAtOffset0(
-  segments: string[],
+function matchArchitectureModule(
+  canonicalPath: string,
+  canonicalSegments: string[],
   module: ArchitectureModuleDefinition,
 ): MatchedArchitectureModule | undefined {
-  const matcherSegments = splitPathSegments(module.matcher)
-  const instance = matchAtOffset(segments, matcherSegments, 0)
-  if (instance === undefined) return undefined
+  return module.kind === 'child-wildcard'
+    ? matchChildWildcardModule(canonicalPath, canonicalSegments, module)
+    : matchExactModule(canonicalPath, canonicalSegments, module)
+}
+
+function matchExactModule(
+  canonicalPath: string,
+  canonicalSegments: string[],
+  module: ArchitectureModuleDefinition,
+): MatchedArchitectureModule | undefined {
+  if (!startsWithSegments(canonicalSegments, module.pathSegments)) return undefined
+  return makeMatchedModule(canonicalPath, module, joinModulePath(module.pathSegments))
+}
+
+function matchChildWildcardModule(
+  canonicalPath: string,
+  canonicalSegments: string[],
+  module: ArchitectureModuleDefinition,
+): MatchedArchitectureModule | undefined {
+  if (canonicalSegments.length <= module.pathSegments.length) return undefined
+  if (!startsWithSegments(canonicalSegments, module.pathSegments)) return undefined
+
+  const ownerSegments = canonicalSegments.slice(0, module.pathSegments.length + 1)
+  return makeMatchedModule(canonicalPath, module, joinModulePath(ownerSegments))
+}
+
+function makeMatchedModule(
+  canonicalPath: string,
+  module: ArchitectureModuleDefinition,
+  ownerPath: string,
+): MatchedArchitectureModule {
   return {
-    matcher: module.matcher,
-    instance,
+    canonicalPath,
+    ownerKey: module.matcher,
+    ownerPath,
     policy: module.policy,
     order: module.order,
+    anonymous: false,
   }
 }
 
-interface ArchitectureModuleDefinition {
-  matcher: string
-  policy: ArchitectureModulePolicy
-  order: number
-}
-
-function splitPathSegments(pathValue: string): string[] {
-  return pathValue.split('/').filter(Boolean)
-}
-
-function matchAtOffset(
-  segments: string[],
-  matcherSegments: string[],
-  start: number,
-): string | undefined {
-  if (start + matcherSegments.length > segments.length) return undefined
-  const instanceParts: string[] = []
-  for (let index = 0; index < matcherSegments.length; index++) {
-    const matcherPart = matcherSegments[index]
-    const segmentPart = segments[start + index]
-    if (matcherPart === '*') {
-      instanceParts.push(segmentPart)
-      continue
-    }
-    if (matcherPart !== segmentPart) return undefined
-    instanceParts.push(matcherPart)
+function makeAnonymousModule(canonicalPath: string): MatchedArchitectureModule {
+  return {
+    canonicalPath,
+    ownerKey: canonicalPath,
+    ownerPath: canonicalPath,
+    policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
+    order: 0,
+    anonymous: true,
   }
-  return instanceParts.join('/')
 }
 
 function pickBestMatch(
@@ -255,33 +400,42 @@ function pickBestMatch(
 }
 
 function compareMatches(left: MatchedArchitectureModule, right: MatchedArchitectureModule): number {
-  const leftWildcards = countWildcards(left.matcher)
-  const rightWildcards = countWildcards(right.matcher)
-  if (leftWildcards !== rightWildcards) {
-    return leftWildcards - rightWildcards
+  const leftOwnerDepth = splitModulePath(left.ownerPath).length
+  const rightOwnerDepth = splitModulePath(right.ownerPath).length
+  if (leftOwnerDepth !== rightOwnerDepth) {
+    return rightOwnerDepth - leftOwnerDepth
   }
-  if (left.matcher.length !== right.matcher.length) {
-    return right.matcher.length - left.matcher.length
+
+  const leftExact = !left.ownerKey.endsWith('/*')
+  const rightExact = !right.ownerKey.endsWith('/*')
+  if (leftExact !== rightExact) {
+    return leftExact ? -1 : 1
   }
+
+  const leftKeyDepth = splitSelectorSegments(left.ownerKey).length
+  const rightKeyDepth = splitSelectorSegments(right.ownerKey).length
+  if (leftKeyDepth !== rightKeyDepth) {
+    return rightKeyDepth - leftKeyDepth
+  }
+
   return left.order - right.order
 }
 
-interface MatchedArchitectureModule {
-  matcher: string
-  instance: string
-  policy: ArchitectureModulePolicy
-  order: number
+function startsWithSegments(segments: string[], prefix: string[]): boolean {
+  if (prefix.length > segments.length) return false
+  return prefix.every((segment, index) => segments[index] === segment)
 }
 
-interface ArchitectureModulePolicy {
-  imports: string[]
-  exports: string[]
-  entrypoints: string[]
-  shared: boolean
+function splitModulePath(pathValue: string): string[] {
+  return pathValue === '.' ? [] : splitSelectorSegments(pathValue)
 }
 
-function countWildcards(value: string): number {
-  return value.split('*').length - 1
+function splitSelectorSegments(pathValue: string): string[] {
+  return pathValue.split('/').filter(Boolean)
+}
+
+function joinModulePath(segments: string[]): string {
+  return segments.length > 0 ? segments.join('/') : '.'
 }
 
 function isOutsideProject(pathValue: string): boolean {

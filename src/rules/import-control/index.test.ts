@@ -154,8 +154,8 @@ scenario(
       { path: 'src/rules/public.ts' },
     ],
     architecture: {
-      'index.ts': { imports: [] },
-      'rules/public.ts': { imports: [], entrypoints: ['public.ts'] },
+      '.': { imports: [] },
+      rules: { imports: [], entrypoints: ['public.ts'] },
     },
     filename: 'src/index.ts',
   },
@@ -168,8 +168,8 @@ scenario('shallow relative import to child module default entrypoint is implicit
     { path: 'src/rules/index.ts' },
   ],
   architecture: {
-    'index.ts': { imports: [] },
-    'rules/index.ts': { imports: [] },
+    '.': { imports: [] },
+    rules: { imports: [] },
   },
   filename: 'src/index.ts',
 })
@@ -184,7 +184,7 @@ scenario(
       { path: 'src/rules/internal.ts' },
     ],
     architecture: {
-      'index.ts': { imports: [] },
+      '.': { imports: [] },
       rules: { imports: [] },
     },
     filename: 'src/index.ts',
@@ -374,6 +374,112 @@ scenario('exact module matcher takes precedence over wildcard matcher', rule, {
   },
   filename: 'src/repository/special/index.ts',
 })
+
+scenario('parent import allowlist entry does not allow importing a child module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/index.ts',
+      content: "import { value } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models'] },
+    models: { imports: [] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'notAllowed' }],
+})
+
+scenario('self-or-child import allowlist entry allows importing the parent module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/index.ts',
+      content: "import { value } from '../../models/index.ts'",
+    },
+    { path: 'src/models/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/+'] },
+    models: { imports: [] },
+  },
+  filename: 'src/repository/user/index.ts',
+})
+
+scenario('self-or-child import allowlist entry allows importing a direct child module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/index.ts',
+      content: "import { value } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/+'] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/index.ts',
+})
+
+scenario('self-or-child import allowlist entry does not allow importing a deeper module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/index.ts',
+      content: "import { value } from '../../models/user/internal/index.ts'",
+    },
+    { path: 'src/models/user/internal/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/+'] },
+    'models/*': { imports: [] },
+    'models/user/internal': { imports: [] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'notAllowed' }],
+})
+
+scenario('models child allowlist does not match the parent entrypoint module', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/index.ts',
+      content: "import { value } from '../../models/index.ts'",
+    },
+    { path: 'src/models/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    models: { imports: [] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'notAllowed' }],
+})
+
+scenario(
+  'unsupported architecture key selector is reported through shared config validation',
+  rule,
+  {
+    files: [
+      TSCONFIG_WITH_ROOT_DIR,
+      {
+        path: 'src/repository/user/index.ts',
+        content: "import { value } from '../../models/index.ts'",
+      },
+      { path: 'src/models/index.ts' },
+    ],
+    architecture: {
+      'repository/*': { imports: ['models/+'] },
+      'models/+': { imports: [] },
+    },
+    filename: 'src/repository/user/index.ts',
+    errors: [{ messageId: 'configurationError' }],
+  },
+)
 
 scenario('wildcard import allowlist pattern allows import from explicitly-named sub-module', rule, {
   files: [

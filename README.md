@@ -26,10 +26,10 @@ export default [
         architecture: {
           utils: { shared: true },
           'repository/*': {
-            imports: ['utils', 'models/*'],
+            imports: ['utils', 'models/+'],
             exports: ['^create\\w+Repo$', '^Repository[A-Z]\\w+$'],
           },
-          'models/*': {
+          models: {
             imports: ['utils'],
           },
           app: {
@@ -66,18 +66,42 @@ export default [unslop.configs.minimal]
 
 ## Architecture Settings
 
-All architecture rules read from `settings.unslop.architecture`. Each key is a module matcher (path segments, `*` per segment), and each value is a policy object:
+All architecture rules read from `settings.unslop.architecture`. Each file first resolves to a canonical module path equal to its containing directory relative to the source root from `tsconfig.json`.
+
+- `src/index.ts` -> `.`
+- `src/models/index.ts` -> `models`
+- `src/models/user/index.ts` -> `models/user`
+- `src/models/user/internal.ts` -> `models/user`
+
+Architecture keys are directory-shaped subtree selectors:
+
+- `.` matches the source-root module
+- `models` owns `models` and everything below it
+- `models/*` owns each direct child subtree under `models`, such as `models/user` and `models/user/internal`
+
+File-shaped keys like `index.ts` or `rules/public.ts` are not supported.
+
+Each value is a policy object:
 
 ```ts
 {
-  imports?: string[]  // module matchers this module may import from; '*' allows all
+  imports?: string[]  // exact module, direct child via /*, self-or-child via /+, or '*' for all
   exports?: string[]  // regex patterns symbols exported from index.ts/types.ts must match
   entrypoints?: string[] // public files allowed for external and test imports
   shared?: boolean    // marks module as shared; enables no-false-sharing
 }
 ```
 
-Best match wins by fewest wildcards, then longest matcher, then declaration order. All architecture rules take no options - policy comes entirely from this shared settings block.
+Architecture keys and import allowlists use different matching rules:
+
+- keys assign ownership to subtrees
+- `imports: ['models']` allows only the exact `models` module
+- `imports: ['models/*']` allows only direct children like `models/user`
+- `imports: ['models/+']` allows `models` and direct children like `models/user`
+
+When multiple keys cover the same canonical module path, the winner is chosen by nearest owner first, then exact named path over wildcard path at the same depth, then longer selector path, then declaration order. Unmatched canonical module paths become anonymous modules with empty `imports`, empty `exports`, `shared: false`, and default `entrypoints: ['index.ts']`.
+
+All architecture rules take no options. Policy comes entirely from this shared settings block.
 
 ## Rules
 
@@ -90,7 +114,7 @@ Deny-by-default for cross-module imports, so forgetting to declare a dependency 
 - cross-module imports must arrive through the public gate (`index.ts` or `types.ts`)
 - local cross-module namespace imports are forbidden (`import * as X from '<local-module>'`)
 - same-module relative imports can only go one level deeper - no tunnelling into internals
-- files that don't match any declared module are denied (fail-closed, not fail-silently)
+- files that don't match any declared module become anonymous modules and are denied by default
 
 Alias imports are resolved via `compilerOptions.paths` from `tsconfig.json`.
 
@@ -117,7 +141,7 @@ settings: {
   unslop: {
     architecture: {
       utils: { shared: true },
-      'shared/*': { shared: true },
+      shared: { shared: true },
     },
   },
 }

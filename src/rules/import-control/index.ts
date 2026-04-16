@@ -5,8 +5,7 @@ import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } 
 import node_path from 'node:path'
 
 import {
-  createConfigurationErrorListeners,
-  formatProjectContextError,
+  getArchitectureRuleListenerState,
   getArchitectureRuleState,
   getRelativePath,
   isInsidePath,
@@ -35,22 +34,20 @@ export default {
     },
   },
   create(context) {
-    const state = getArchitectureRuleState(context)
-    if (state.kind === 'context-error') {
-      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
-    }
-
-    if (state.kind !== 'active') return {}
+    const state = getArchitectureRuleListenerState(context)
+    if (state.kind === 'listener') return state.listener
+    if (state.state.kind !== 'active') return {}
+    const activeState = state.state
 
     return {
       ImportDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
       ExportNamedDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
       ExportAllDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
     }
   },
@@ -104,7 +101,7 @@ function getSpecifier(
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
   const { context, node, specifier, importer, importee, targetFile, importerFile } = options
-  if (importer.instance === importee.instance) {
+  if (importer.ownerPath === importee.ownerPath) {
     reportDeepSameModuleImport(context, node, importerFile, targetFile)
     return
   }
@@ -116,11 +113,11 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isShallowRelativeEntrypoint(specifier, targetFile, importee.policy)) return
 
-  if (!allowsImport(importer.policy, importee.matcher)) {
+  if (!allowsImport(importer.policy, importee.canonicalPath)) {
     context.report({
       node,
       messageId: 'notAllowed',
-      data: { from: importer.matcher, to: importee.matcher },
+      data: { from: importer.canonicalPath, to: importee.canonicalPath },
     })
     return
   }
@@ -216,8 +213,35 @@ function allowsImport(policy: { imports: string[] }, targetMatcher: string): boo
 }
 
 function importPatternMatches(pattern: string, target: string): boolean {
-  const patternSegs = pattern.split('/').filter(Boolean)
-  const targetSegs = target.split('/').filter(Boolean)
-  if (patternSegs.length !== targetSegs.length) return false
-  return patternSegs.every((seg, i) => seg === '*' || seg === targetSegs[i])
+  if (pattern === target) return true
+
+  const plusBase = getTerminalWildcardBase(pattern, '+')
+  if (plusBase !== undefined) {
+    return isExactOrDirectChild(plusBase, target)
+  }
+
+  const starBase = getTerminalWildcardBase(pattern, '*')
+  if (starBase !== undefined) {
+    return isDirectChildModule(starBase, target)
+  }
+
+  return false
+}
+
+function getTerminalWildcardBase(pattern: string, wildcard: '*' | '+'): string | undefined {
+  const suffix = `/${wildcard}`
+  if (!pattern.endsWith(suffix)) return undefined
+  const base = pattern.slice(0, -suffix.length)
+  return base.length > 0 ? base : undefined
+}
+
+function isExactOrDirectChild(base: string, target: string): boolean {
+  return target === base || isDirectChildModule(base, target)
+}
+
+function isDirectChildModule(base: string, target: string): boolean {
+  const prefix = `${base}/`
+  if (!target.startsWith(prefix)) return false
+  const remainder = target.slice(prefix.length)
+  return remainder.length > 0 && !remainder.includes('/')
 }

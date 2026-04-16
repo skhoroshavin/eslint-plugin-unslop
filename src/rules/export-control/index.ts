@@ -2,10 +2,13 @@ import type { Rule } from 'eslint'
 
 import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
+import node_path from 'node:path'
+
 import {
+  createConfigurationErrorListeners,
+  formatProjectContextError,
   getArchitectureRuleState,
   getDeclarationNamesFromExport,
-  isPublicEntrypoint,
 } from '../../utils/index.js'
 
 export default {
@@ -17,6 +20,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       exportAllForbidden: 'Export denied: export * is not allowed.',
       symbolDenied:
         'Export denied: symbol "{{symbol}}" does not match configured exports patterns.',
@@ -25,6 +29,12 @@ export default {
   },
   create(context) {
     const state = buildRuleState(context)
+    if (state.kind === 'config-error') {
+      return createConfigurationErrorListeners(context, state.details)
+    }
+    if (state.kind === 'context-error') {
+      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
+    }
     if (state.kind === 'invalid') {
       const root = context.getSourceCode().ast
       context.report({
@@ -60,8 +70,14 @@ export default {
 
 function buildRuleState(context: Rule.RuleContext): RuleState {
   const state = getArchitectureRuleState(context)
+  if (state.kind === 'config-error') {
+    return { kind: 'config-error', details: state.details }
+  }
+  if (state.kind === 'context-error') {
+    return { kind: 'context-error', error: state.error }
+  }
   if (state.kind !== 'active') return { kind: 'inactive' }
-  if (!isPublicEntrypoint(state.filename)) return { kind: 'inactive' }
+  if (!isRuleEntrypoint(state.filename)) return { kind: 'inactive' }
   if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 
   const built = buildPatterns(state.moduleMatch.policy.exports)
@@ -135,7 +151,30 @@ function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(symbol))
 }
 
+function isRuleEntrypoint(filePath: string): boolean {
+  return RULE_ENTRYPOINT_FILES.has(node_path.basename(filePath))
+}
+
+const RULE_ENTRYPOINT_FILES = new Set([
+  'index.ts',
+  'index.tsx',
+  'index.js',
+  'index.jsx',
+  'types.ts',
+  'types.tsx',
+  'types.js',
+  'types.jsx',
+])
+
 type RuleState =
   | { kind: 'inactive' }
+  | { kind: 'config-error'; details: string }
+  | {
+      kind: 'context-error'
+      error: Extract<
+        ReturnType<typeof getArchitectureRuleState>,
+        { kind: 'context-error' }
+      >['error']
+    }
   | { kind: 'invalid'; invalidPattern: string }
   | { kind: 'active'; patterns: RegExp[] }

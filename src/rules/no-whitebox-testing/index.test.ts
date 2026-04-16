@@ -202,6 +202,52 @@ scenario('test imports child submodule internal file', rule, {
   filename: 'src/module/some.test.ts',
 })
 
+scenario('test imports configured non-index entrypoint from the current owned subtree', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/module/a/some.test.ts', content: "import { api } from './public.ts'" },
+    { path: 'src/module/a/public.ts' },
+  ],
+  architecture: {
+    module: { imports: [] },
+    'module/*': { imports: [], entrypoints: ['public.ts'] },
+  },
+  filename: 'src/module/a/some.test.ts',
+})
+
+scenario('test imports private sibling from the current owned subtree', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/module/a/some.test.ts', content: "import { api } from './model.ts'" },
+    { path: 'src/module/a/model.ts' },
+  ],
+  architecture: {
+    module: { imports: [] },
+    'module/*': { imports: [], entrypoints: ['public.ts'] },
+  },
+  filename: 'src/module/a/some.test.ts',
+  errors: [
+    {
+      messageId: 'usePublicEntrypoint',
+      data: { specifier: './model.ts' },
+    },
+  ],
+  output: null,
+})
+
+scenario('test importing through current subtree default index entrypoint is allowed', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/module/a/some.test.ts', content: "import { api } from '.'" },
+    { path: 'src/module/a/index.ts' },
+  ],
+  architecture: {
+    module: { imports: [] },
+    'module/*': { imports: [] },
+  },
+  filename: 'src/module/a/some.test.ts',
+})
+
 scenario('test imports another module', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
@@ -222,6 +268,19 @@ scenario('missing architecture settings', rule, {
     { path: 'src/module/model.ts' },
   ],
   filename: 'src/module/some.test.ts',
+})
+
+scenario('unsupported architecture key selector reports a configuration error', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    { path: 'src/module/some.test.ts', content: "import { model } from './model.ts'" },
+    { path: 'src/module/model.ts' },
+  ],
+  architecture: {
+    'module/+': { imports: [] },
+  },
+  filename: 'src/module/some.test.ts',
+  errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('semantic project unavailable', rule, {
