@@ -18,6 +18,7 @@ type ScenarioArchitecture = Record<string, ArchitectureModulePolicy>
 
 interface ArchitectureModulePolicy {
   imports?: string[]
+  typeImports?: string[]
   exports?: string[]
   entrypoints?: string[]
   shared?: boolean

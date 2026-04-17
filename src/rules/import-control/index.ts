@@ -101,7 +101,7 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isShallowRelativeEntrypoint(specifier, targetFile, importee.policy)) return
 
-  if (!allowsImport(importer.policy, importee.canonicalPath)) {
+  if (!allowsCrossModuleDeclaration(importer.policy, importee.canonicalPath, node)) {
     context.report({
       node,
       messageId: 'notAllowed',
@@ -184,9 +184,69 @@ function isRelativeDepthTooDeep(specifier: string): boolean {
   return parts.length > 2
 }
 
-function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
-  if (policy.imports.includes('*')) return true
-  return policy.imports.some((pattern) => importPatternMatches(pattern, targetMatcher))
+function allowsCrossModuleDeclaration(
+  policy: { imports: string[]; typeImports: string[] },
+  targetMatcher: string,
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
+): boolean {
+  if (allowsImportPattern(policy.imports, targetMatcher)) return true
+  return isTypeOnlyDeclaration(node) && allowsImportPattern(policy.typeImports, targetMatcher)
+}
+
+function isTypeOnlyDeclaration(
+  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
+): boolean {
+  if (node.type === 'ImportDeclaration') return isTypeOnlyImportDeclaration(node)
+  if (node.type === 'ExportAllDeclaration') return getExportKind(node) === 'type'
+  return isTypeOnlyExportNamedDeclaration(node)
+}
+
+function isTypeOnlyImportDeclaration(node: ImportDeclaration): boolean {
+  if (getImportKind(node) === 'type') return true
+  if (node.specifiers.length === 0) return false
+  return node.specifiers.every(isTypeOnlyImportSpecifier)
+}
+
+function isTypeOnlyImportSpecifier(specifier: ImportDeclaration['specifiers'][number]): boolean {
+  return specifier.type === 'ImportSpecifier' && getImportKind(specifier) === 'type'
+}
+
+function isTypeOnlyExportNamedDeclaration(node: ExportNamedDeclaration): boolean {
+  if (getExportKind(node) === 'type') return true
+  if (node.specifiers.length === 0) return false
+  return node.specifiers.every(isTypeOnlyExportSpecifier)
+}
+
+function isTypeOnlyExportSpecifier(
+  specifier: ExportNamedDeclaration['specifiers'][number],
+): boolean {
+  return getExportKind(specifier) === 'type'
+}
+
+function getImportKind(value: unknown): 'type' | 'value' | undefined {
+  return getDeclarationKind(value, 'importKind')
+}
+
+function getExportKind(value: unknown): 'type' | 'value' | undefined {
+  return getDeclarationKind(value, 'exportKind')
+}
+
+function getDeclarationKind(
+  value: unknown,
+  key: 'importKind' | 'exportKind',
+): 'type' | 'value' | undefined {
+  if (!isRecord(value)) return undefined
+  const kind = value[key]
+  return kind === 'type' || kind === 'value' ? kind : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function allowsImportPattern(patterns: string[], targetMatcher: string): boolean {
+  if (patterns.includes('*')) return true
+  return patterns.some((pattern) => importPatternMatches(pattern, targetMatcher))
 }
 
 function importPatternMatches(pattern: string, target: string): boolean {

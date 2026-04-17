@@ -73,6 +73,38 @@ scenario('cross-module import to configured module defaults to index entrypoint'
   filename: 'src/repository/user/service.ts',
 })
 
+scenario('type-only cross-module import declared in imports is allowed', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import type { UserModel } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/service.ts',
+})
+
+scenario('type-only cross-module import declared only in typeImports is allowed', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import { type UserModel } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: [], typeImports: ['models/*'] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/service.ts',
+})
+
 scenario('cross-module import not declared in the allowlist is reported', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
@@ -90,6 +122,40 @@ scenario('cross-module import not declared in the allowlist is reported', rule, 
   errors: [{ messageId: 'notAllowed' }],
 })
 
+scenario('configured module that omits typeImports denies type-only imports by default', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import type { UserModel } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: [] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/service.ts',
+  errors: [{ messageId: 'notAllowed' }],
+})
+
+scenario('mixed import declaration does not use typeImports', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import { type UserModel, createUser } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: [], typeImports: ['models/*'] },
+    'models/*': { imports: [] },
+  },
+  filename: 'src/repository/user/service.ts',
+  errors: [{ messageId: 'notAllowed' }],
+})
+
 scenario('cross-module import targets internal file outside configured entrypoints', rule, {
   files: [
     TSCONFIG_WITH_ROOT_DIR,
@@ -102,6 +168,29 @@ scenario('cross-module import targets internal file outside configured entrypoin
   ],
   architecture: {
     'repository/*': { imports: ['models/*'] },
+    'models/*': { imports: [], entrypoints: ['public.ts'] },
+  },
+  filename: 'src/repository/user/service.ts',
+  errors: [
+    {
+      messageId: 'nonEntrypoint',
+      data: { specifier: '../../models/user/internal.ts' },
+    },
+  ],
+})
+
+scenario('type-only cross-module import to internal file outside configured entrypoints', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import type { Hidden } from '../../models/user/internal.ts'",
+    },
+    { path: 'src/models/user/public.ts' },
+    { path: 'src/models/user/internal.ts' },
+  ],
+  architecture: {
+    'repository/*': { imports: [], typeImports: ['models/*'] },
     'models/*': { imports: [], entrypoints: ['public.ts'] },
   },
   filename: 'src/repository/user/service.ts',
@@ -228,6 +317,19 @@ scenario('cross-module import to anonymous module non-index entrypoint is report
   },
   filename: 'src/repository/user/service.ts',
   errors: [{ messageId: 'nonEntrypoint' }],
+})
+
+scenario('anonymous modules default to denying type-only cross-module imports', rule, {
+  files: [
+    TSCONFIG_WITH_ROOT_DIR,
+    {
+      path: 'src/repository/user/service.ts',
+      content: "import type { UserModel } from '../../models/user/index.ts'",
+    },
+    { path: 'src/models/user/index.ts' },
+  ],
+  filename: 'src/repository/user/service.ts',
+  errors: [{ messageId: 'notAllowed' }],
 })
 
 scenario('same-module relative import one level deep is allowed', rule, {
