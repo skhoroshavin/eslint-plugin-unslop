@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines import-boundary behavior enforced by `unslop/import-control`.
+
+## Requirements
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings
 
-`unslop/import-control` MUST read `settings.unslop.architecture` through the shared `architecture-config` capability. Canonical module paths, architecture key ownership, unsupported-key validation, anonymous-module behavior, and default `entrypoints` semantics are defined by `architecture-config` and MUST be reused by this rule.
+`unslop/import-control` MUST read `settings.unslop.architecture` through the shared `architecture-config` capability. Canonical module paths, architecture key ownership, unsupported-key validation, anonymous-module behavior, default `entrypoints` semantics, and `typeImports` semantics are defined by `architecture-config` and MUST be reused by this rule.
 
 #### Scenario: Architecture settings are present
 
@@ -35,16 +39,31 @@
 
 ### Requirement: Import control SHALL enforce deny-by-default module boundaries
 
-Cross-module imports are forbidden unless the importer explicitly allows the target canonical module path via `imports` or the import is a shallow relative entrypoint import. Module ownership and anonymous-module fallback are derived from the shared `architecture-config` capability. `imports` patterns use non-recursive canonical module path matching: exact module path, direct child via `/*`, and self-or-child via `/+`. When semantic context cannot be established for a file that is subject to this rule, the rule MUST report a configuration error instead of becoming a no-op.
+Cross-module imports are forbidden unless the importer explicitly allows the target canonical module path via `imports`, the declaration is type-only and the target canonical module path matches `typeImports`, or the import is a shallow relative entrypoint import. Type-only imports also remain allowed when the target matches `imports`. Module ownership and anonymous-module fallback are derived from the shared `architecture-config` capability. `imports` and `typeImports` patterns use non-recursive canonical module path matching: exact module path, direct child via `/*`, and self-or-child via `/+`. When semantic context cannot be established for a file that is subject to this rule, the rule MUST report a configuration error instead of becoming a no-op.
 
 #### Scenario: Allowed cross-module edge
 
 - **WHEN** importer policy includes the target canonical module path in `imports`
 - **THEN** allow
 
+#### Scenario: Type-only cross-module edge allowed by imports
+
+- **WHEN** a type-only import targets a canonical module path included in `imports`
+- **THEN** allow
+
+#### Scenario: Type-only cross-module edge allowed by typeImports
+
+- **WHEN** a type-only import targets a canonical module path included in `typeImports`
+- **THEN** allow
+
+#### Scenario: Mixed import declaration does not use typeImports
+
+- **WHEN** an import declaration includes both value and type specifiers and only `typeImports` matches the target canonical module path
+- **THEN** report an error
+
 #### Scenario: Undeclared cross-module edge
 
-- **WHEN** importer policy does not include the target canonical module path in `imports` and it is not a shallow relative entrypoint import
+- **WHEN** importer policy does not include the target canonical module path in `imports`, the declaration is not a type-only import matched by `typeImports`, and it is not a shallow relative entrypoint import
 - **THEN** report an error
 
 #### Scenario: Exact import allowlist pattern matches only exact module
@@ -87,10 +106,20 @@ Cross-module imports are forbidden unless the importer explicitly allows the tar
 - **WHEN** `imports` contains `parent/+` and target canonical module path is `parent/child/sub`
 - **THEN** report an error
 
+#### Scenario: Type import allowlist pattern matches direct child module
+
+- **WHEN** `typeImports` contains `parent/*` and a type-only import targets canonical module path `parent/child`
+- **THEN** allow
+
+#### Scenario: Type import allowlist pattern does not match deeper module
+
+- **WHEN** `typeImports` contains `parent/*` and a type-only import targets canonical module path `parent/child/sub`
+- **THEN** report an error
+
 #### Scenario: Unmatched module edge
 
 - **WHEN** a file belongs to no configured architecture key
-- **THEN** treat it as an anonymous module with empty `imports` policy
+- **THEN** treat it as an anonymous module with empty `imports` and empty `typeImports` policy
 
 #### Scenario: Semantic project unavailable
 
@@ -104,16 +133,21 @@ Cross-module imports are forbidden unless the importer explicitly allows the tar
 
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 
-Cross-module imports are allowed only to files in the target module's `entrypoints` (default `['index.ts']`). Resolution uses the TypeScript semantic project.
+Cross-module imports allowed by `imports`, and type-only cross-module imports allowed by either `imports` or `typeImports`, SHALL be allowed only to files in the target module's `entrypoints` (default `['index.ts']`). Resolution SHALL use the TypeScript semantic project.
 
 #### Scenario: Cross-module import targets configured entrypoint via explicit policy
 
-- **WHEN** import resolves to a file in target's `entrypoints` and importer allows target
+- **WHEN** import resolves to a file in target's `entrypoints` and importer allows target through `imports`
 - **THEN** allow
 
 #### Scenario: Cross-module alias import targets configured entrypoint via explicit policy
 
-- **WHEN** alias import resolves to a file in target's `entrypoints` and importer allows target
+- **WHEN** alias import resolves to a file in target's `entrypoints` and importer allows target through `imports`
+- **THEN** allow
+
+#### Scenario: Type-only cross-module import targets configured entrypoint via typeImports
+
+- **WHEN** a type-only import resolves to a file in target's `entrypoints` and importer allows the target through `typeImports`
 - **THEN** allow
 
 #### Scenario: Cross-module import to configured module defaults to index entrypoint
@@ -123,7 +157,12 @@ Cross-module imports are allowed only to files in the target module's `entrypoin
 
 #### Scenario: Cross-module import targets internal file
 
-- **WHEN** import resolves to a file not in target's `entrypoints`
+- **WHEN** an allowed cross-module import resolves to a file not in target's `entrypoints`
+- **THEN** report an error
+
+#### Scenario: Type-only cross-module import targets internal file
+
+- **WHEN** a type-only import allowed by `typeImports` resolves to a file not in target's `entrypoints`
 - **THEN** report an error
 
 #### Scenario: Cross-module import to anonymous module allows only index entrypoint
@@ -138,7 +177,7 @@ Cross-module imports are allowed only to files in the target module's `entrypoin
 
 ### Requirement: Import control SHALL implicitly allow shallow relative imports to direct child entrypoints
 
-A `./`-relative import at most one level deep to an allowed child-module entrypoint is implicitly allowed.
+A `./`-relative import at most one level deep to an allowed child-module entrypoint SHALL be implicitly allowed.
 
 #### Scenario: Shallow relative import to child module configured entrypoint
 
@@ -157,7 +196,7 @@ A `./`-relative import at most one level deep to an allowed child-module entrypo
 
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
 
-Same-module depth limits based on resolved target identity, regardless of relative or alias syntax.
+Same-module depth limits SHALL be enforced based on resolved target identity, regardless of relative or alias syntax.
 
 #### Scenario: Same-module shallow relative import is allowed
 

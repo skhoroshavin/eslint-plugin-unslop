@@ -113,6 +113,7 @@ interface MatchedArchitectureModule {
 
 interface ArchitectureModulePolicy {
   imports: string[]
+  typeImports: string[]
   exports: string[]
   entrypoints: string[]
   shared: boolean
@@ -235,11 +236,13 @@ function getUnsupportedArchitectureKeyDetails(matcher: string): string {
 function parseModulePolicy(rawPolicy: unknown): ArchitectureModulePolicy | undefined {
   if (!isRecord(rawPolicy)) return undefined
   const imports = readStringList(rawPolicy.imports)
+  const typeImports = readStringList(rawPolicy.typeImports)
   const exports = readStringList(rawPolicy.exports)
   const entrypoints = readStringList(rawPolicy.entrypoints)
   const shared = rawPolicy.shared === true
   return {
     imports,
+    typeImports,
     exports,
     entrypoints: entrypoints.length > 0 ? entrypoints : ['index.ts'],
     shared,
@@ -340,7 +343,13 @@ function makeAnonymousModule(canonicalPath: string): MatchedArchitectureModule {
     canonicalPath,
     ownerKey: canonicalPath,
     ownerPath: canonicalPath,
-    policy: { imports: [], exports: [], entrypoints: ['index.ts'], shared: false },
+    policy: {
+      imports: [],
+      typeImports: [],
+      exports: [],
+      entrypoints: ['index.ts'],
+      shared: false,
+    },
     order: 0,
     anonymous: true,
     ownerDepth: depth,

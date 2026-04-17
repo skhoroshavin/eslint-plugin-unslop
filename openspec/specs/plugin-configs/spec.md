@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines the public ESLint config presets exposed by the plugin.
+
+## Requirements
 
 ### Requirement: Plugin SHALL expose a minimal config for zero-config symbol fixing
 
-`configs.minimal` enables only `no-special-unicode` and `no-unicode-escape` at error severity. No additional settings required.
+`configs.minimal` SHALL enable only `no-special-unicode` and `no-unicode-escape` at error severity. No additional settings SHALL be required.
 
 #### Scenario: Minimal config enables symbol rules
 

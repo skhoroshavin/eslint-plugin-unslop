@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines symbol-sharing constraints enforced by `unslop/no-false-sharing`.
+
+## Requirements
 
 ### Requirement: no-false-sharing SHALL take no rule-level options
 
@@ -70,7 +74,7 @@ Evaluate whether symbols exported from shared module entrypoints (configured `en
 
 ### Requirement: no-false-sharing SHALL count consumers in directory mode only
 
-Directory-level grouping for consumer counts. Both value and type-only imports count. Same-shared-module internal consumers collapse to one group. Internal-only group is insufficient.
+Consumer counting SHALL use directory-level grouping. Both value and type-only imports SHALL count. Same-shared-module internal consumers SHALL collapse to one group. An internal-only group SHALL be insufficient.
 
 #### Scenario: Symbol imported from one directory group
 

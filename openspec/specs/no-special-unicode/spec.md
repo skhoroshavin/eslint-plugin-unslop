@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines special-Unicode normalization behavior enforced by `unslop/no-special-unicode`.
+
+## Requirements
 
 ### Requirement: Special unicode characters are replaced with ASCII equivalents
 
-Auto-replace detected special unicode characters in string/template literals.
+The rule SHALL auto-replace detected special Unicode characters in string and template literals.
 
 #### Scenario: Smart quotes are replaced with straight quotes
 
@@ -43,7 +47,7 @@ Auto-replace detected special unicode characters in string/template literals.
 
 ### Requirement: Quote safety prevents invalid string literal fixes
 
-No autofix when replacing a smart quote would create the same quote character as the wrapper.
+The rule MUST NOT autofix when replacing a smart quote would create the same quote character as the wrapper.
 
 #### Scenario: Smart double quotes inside double-quoted strings are not auto-fixed
 
