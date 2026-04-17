@@ -34,10 +34,10 @@ export default {
     },
   },
   create(context) {
-    const state = getArchitectureRuleListenerState(context)
-    if (state.kind === 'listener') return state.listener
-    if (state.state.kind !== 'active') return {}
-    const activeState = state.state
+    const result = getArchitectureRuleListenerState(context)
+    if ('listener' in result) return result.listener
+    if (result.state.kind !== 'active') return {}
+    const activeState = result.state
 
     return {
       ImportDeclaration(node) {

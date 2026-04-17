@@ -30,10 +30,10 @@ export default {
   create(context) {
     if (!isRecognizedTestFile(context.filename)) return {}
 
-    const state = getArchitectureRuleListenerState(context)
-    if (state.kind === 'listener') return state.listener
-    if (state.state.kind !== 'active') return {}
-    const activeState = state.state
+    const result = getArchitectureRuleListenerState(context)
+    if ('listener' in result) return result.listener
+    if (result.state.kind !== 'active') return {}
+    const activeState = result.state
 
     return {
       ImportDeclaration(node) {
