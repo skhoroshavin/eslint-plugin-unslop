@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines ordering and autofix behavior enforced by `unslop/read-friendly-order`.
+
+## Requirements
 
 ### Requirement: Read-friendly-order exposes canonical autofix
 
-Declares code autofix support. Deterministic reorder fixes using top-level public-surface-first bands, preserving consumer-first ordering within each band when fix-safe and not excluded by eager runtime reachability.
+The rule SHALL declare code autofix support. Reorder fixes SHALL be deterministic by using top-level public-surface-first bands, while preserving consumer-first ordering within each band when fix-safe and not excluded by eager runtime reachability.
 
 #### Scenario: Top-level canonical output uses explicit bands
 
@@ -36,7 +40,7 @@ Declares code autofix support. Deterministic reorder fixes using top-level publi
 
 ### Requirement: Autofix is safety-guarded and non-destructive
 
-Avoids fixes when safe reconstruction cannot be guaranteed. Eager-excluded symbols are skipped entirely.
+The rule MUST avoid fixes when safe reconstruction cannot be guaranteed. Eager-excluded symbols MUST be skipped entirely.
 
 #### Scenario: Ambiguous region does not receive autofix
 
@@ -55,7 +59,7 @@ Avoids fixes when safe reconstruction cannot be guaranteed. Eager-excluded symbo
 
 ### Requirement: Autofix behavior is idempotent under repeated fixing
 
-Repeated fix runs produce stable output.
+Repeated fix runs SHALL produce stable output.
 
 #### Scenario: Re-running fix produces no additional edits
 

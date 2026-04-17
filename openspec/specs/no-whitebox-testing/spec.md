@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines test-import restrictions enforced by `unslop/no-whitebox-testing`.
+
+## Requirements
 
 ### Requirement: no-whitebox-testing SHALL only evaluate recognized test files
 
-`unslop/no-whitebox-testing` evaluates only files matching: `*.test.*`, `*.spec.*`, `*.*-test.*`, or `*.*-spec.*`.
+`unslop/no-whitebox-testing` SHALL evaluate only files matching: `*.test.*`, `*.spec.*`, `*.*-test.*`, or `*.*-spec.*`.
 
 #### Scenario: Recognized test file is checked
 
@@ -16,7 +20,7 @@
 
 ### Requirement: no-whitebox-testing SHALL reject same-directory private imports in tests
 
-Report an `ImportDeclaration` when the import resolves to the same module instance, same directory, and is not an allowed `entrypoint`. Report must include the offending specifier.
+The rule MUST report an `ImportDeclaration` when the import resolves to the same module instance, same directory, and is not an allowed `entrypoint`. The report MUST include the offending specifier.
 
 #### Scenario: Test imports same-directory private sibling file
 

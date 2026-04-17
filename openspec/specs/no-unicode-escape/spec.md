@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines Unicode-escape handling and autofix behavior for `unslop/no-unicode-escape`.
+
+## Requirements
 
 ### Requirement: Rule provides autofix for unicode escapes
 
-Auto-fix `\uXXXX` escape sequences by replacing with literal Unicode characters.
+The rule SHALL auto-fix `\uXXXX` escape sequences by replacing them with literal Unicode characters.
 
 #### Scenario: Basic ASCII escape fix
 

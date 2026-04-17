@@ -1,8 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Defines when `unslop/no-single-use-constants` reports module-level constants.
+
+## Requirements
 
 ### Requirement: no-single-use-constants SHALL report single-use module constants
 
-Report a module-scope `const` declaration when its total real usage count across the semantic project is 0 or 1. Only plain identifier bindings. Reports on `VariableDeclarator` with message id `singleUse`.
+The rule SHALL report a module-scope `const` declaration when its total real usage count across the semantic project is 0 or 1. Only plain identifier bindings SHALL be eligible. Reports SHALL target `VariableDeclarator` with message id `singleUse`.
 
 #### Scenario: Module constant has no real uses
 
@@ -21,11 +25,16 @@ Report a module-scope `const` declaration when its total real usage count across
 
 ### Requirement: no-single-use-constants SHALL exclude non-inlineable declarations and non-uses
 
-Skip destructured ids, arrow/function/class expressions, import/export specifier positions, and bare `export default IDENTIFIER`.
+The rule MUST skip destructured ids, arrow/function/class expressions, import/export specifier positions, and bare `export default IDENTIFIER`.
+
+#### Scenario: Import and export specifier positions are ignored
+
+- **WHEN** an identifier appears only in `import { FOO }` or `export { FOO }` positions
+- **THEN** it is not counted as a real use
 
 ### Requirement: no-single-use-constants SHALL NOT report constants initialized with structured data or factory expressions
 
-Ignore `ObjectExpression`, `NewExpression` initializers. Also ignore `CallExpression` with explicit TypeScript type arguments.
+The rule MUST ignore `ObjectExpression` and `NewExpression` initializers. The rule MUST also ignore `CallExpression` with explicit TypeScript type arguments.
 
 #### Scenario: Destructured const is ignored
 

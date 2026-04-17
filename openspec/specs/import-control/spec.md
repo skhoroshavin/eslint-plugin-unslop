@@ -1,3 +1,7 @@
+## Purpose
+
+Defines import-boundary behavior enforced by `unslop/import-control`.
+
 ## Requirements
 
 ### Requirement: Architecture policy SHALL be defined in shared ESLint settings
@@ -129,7 +133,7 @@ Cross-module imports are forbidden unless the importer explicitly allows the tar
 
 ### Requirement: Import control SHALL enforce public-entrypoint-only cross-module imports
 
-Cross-module imports allowed by `imports`, and type-only cross-module imports allowed by either `imports` or `typeImports`, are allowed only to files in the target module's `entrypoints` (default `['index.ts']`). Resolution uses the TypeScript semantic project.
+Cross-module imports allowed by `imports`, and type-only cross-module imports allowed by either `imports` or `typeImports`, SHALL be allowed only to files in the target module's `entrypoints` (default `['index.ts']`). Resolution SHALL use the TypeScript semantic project.
 
 #### Scenario: Cross-module import targets configured entrypoint via explicit policy
 
@@ -173,7 +177,7 @@ Cross-module imports allowed by `imports`, and type-only cross-module imports al
 
 ### Requirement: Import control SHALL implicitly allow shallow relative imports to direct child entrypoints
 
-A `./`-relative import at most one level deep to an allowed child-module entrypoint is implicitly allowed.
+A `./`-relative import at most one level deep to an allowed child-module entrypoint SHALL be implicitly allowed.
 
 #### Scenario: Shallow relative import to child module configured entrypoint
 
@@ -192,7 +196,7 @@ A `./`-relative import at most one level deep to an allowed child-module entrypo
 
 ### Requirement: Import control SHALL subsume shallow deep-import behavior within modules
 
-Same-module depth limits based on resolved target identity, regardless of relative or alias syntax.
+Same-module depth limits SHALL be enforced based on resolved target identity, regardless of relative or alias syntax.
 
 #### Scenario: Same-module shallow relative import is allowed
 

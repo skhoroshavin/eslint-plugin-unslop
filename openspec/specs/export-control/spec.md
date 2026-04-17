@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines export-boundary behavior enforced by `unslop/export-control`.
+
+## Requirements
 
 ### Requirement: Export control SHALL forbid export-all declarations
 
@@ -21,7 +25,7 @@
 
 ### Requirement: Export control SHALL enforce optional symbol contracts on module entrypoints
 
-Permissive by default. Regex-based symbol contracts apply only when a module defines `exports` patterns and the linted file is one of that module's configured `entrypoints`. The contract applies to direct named exports, source-bearing named exports, and default exports in those constrained entrypoint files.
+The rule SHALL remain permissive by default. Regex-based symbol contracts SHALL apply only when a module defines `exports` patterns and the linted file is one of that module's configured `entrypoints`. The contract SHALL apply to direct named exports, source-bearing named exports, and default exports in those constrained entrypoint files.
 
 #### Scenario: Module has no exports policy
 
