@@ -77,6 +77,123 @@ scenario('exported symbol violating the regex contract is reported', rule, {
   errors: [{ messageId: 'symbolDenied' }],
 })
 
+scenario('non-entrypoint file in constrained module allows value exports', rule, {
+  files: [
+    TSCONFIG,
+    {
+      path: 'src/repository/user/index.ts',
+      content: 'export { createUserRepo } from "./internal.ts"',
+    },
+    { path: 'src/repository/user/internal.ts', content: 'export const helper = 1' },
+  ],
+  architecture: {
+    'repository/*': {
+      imports: ['models/*'],
+      exports: ['^create\\w+Repo$', '^default$'],
+      entrypoints: ['index.ts'],
+    },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/internal.ts',
+})
+
+scenario('non-entrypoint file in constrained module allows type exports', rule, {
+  files: [
+    TSCONFIG,
+    {
+      path: 'src/repository/user/index.ts',
+      content: 'export { type PublicRepo } from "./types.ts"',
+    },
+    { path: 'src/repository/user/types.ts', content: 'export type Helper = { id: string }' },
+  ],
+  architecture: {
+    'repository/*': {
+      imports: ['models/*'],
+      exports: ['^Public\\w+$'],
+      entrypoints: ['index.ts'],
+    },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/types.ts',
+  typescript: true,
+})
+
+scenario('direct type export matching the regex contract is allowed', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/repository/user/index.ts', content: 'export type PublicRepo = { id: string }' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^Public\\w+$'] },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  typescript: true,
+})
+
+scenario('direct type export violating the regex contract is reported', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/repository/user/index.ts', content: 'export type Helper = { id: string }' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^Public\\w+$'] },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'symbolDenied' }],
+  typescript: true,
+})
+
+scenario('source-bearing named export matching the regex contract is allowed', rule, {
+  files: [
+    TSCONFIG,
+    {
+      path: 'src/repository/user/index.ts',
+      content: 'export { createUserRepo } from "./internal.ts"',
+    },
+    { path: 'src/repository/user/internal.ts', content: 'export function createUserRepo() {}' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/index.ts',
+})
+
+scenario('source-bearing named export violating the regex contract is reported', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/repository/user/index.ts', content: 'export { helper } from "./internal.ts"' },
+    { path: 'src/repository/user/internal.ts', content: 'export const helper = 1' },
+  ],
+  architecture: {
+    'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+    'models/*': { imports: ['utils'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'symbolDenied' }],
+})
+
+scenario(
+  'default export in constrained entrypoint is allowed when contract includes default',
+  rule,
+  {
+    files: [
+      TSCONFIG,
+      {
+        path: 'src/repository/user/index.ts',
+        content: 'export default function createUserRepo() {}',
+      },
+    ],
+    architecture: {
+      'repository/*': { imports: ['models/*'], exports: ['^default$'] },
+      'models/*': { imports: ['utils'] },
+    },
+    filename: 'src/repository/user/index.ts',
+  },
+)
+
 scenario(
   'default export in constrained entrypoint is reported when contract has no default pattern',
   rule,
