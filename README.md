@@ -85,12 +85,15 @@ Each value is a policy object:
 
 ```ts
 {
-  imports?: string[]  // exact module, direct child via /*, self-or-child via /+, or '*' for all
-  exports?: string[]  // regex patterns symbols exported from entrypoints must match
-  entrypoints?: string[] // public files allowed for external and test imports
-  shared?: boolean    // marks module as shared; enables no-false-sharing
+  imports?: string[]      // exact module, direct child via /*, self-or-child via /+, or '*' for all
+  typeImports?: string[]  // same patterns as imports, but only for type-only imports
+  exports?: string[]      // regex patterns symbols exported from entrypoints must match
+  entrypoints?: string[]  // public files allowed for external and test imports
+  shared?: boolean        // marks module as shared; enables no-false-sharing
 }
 ```
+
+`typeImports` defaults to `[]` when omitted. Type-only imports are also allowed when the target matches `imports`, so `typeImports` is only needed for modules you want to allow type access to without allowing value imports.
 
 Architecture keys and import allowlists use different matching rules:
 
@@ -99,7 +102,7 @@ Architecture keys and import allowlists use different matching rules:
 - `imports: ['models/*']` allows only direct children like `models/user`
 - `imports: ['models/+']` allows `models` and direct children like `models/user`
 
-When multiple keys cover the same canonical module path, the winner is chosen by nearest owner first, then exact named path over wildcard path at the same depth, then longer selector path, then declaration order. Unmatched canonical module paths become anonymous modules with empty `imports`, empty `exports`, `shared: false`, and default `entrypoints: ['index.ts']`.
+When multiple keys cover the same canonical module path, the winner is chosen by nearest owner first, then exact named path over wildcard path at the same depth, then longer selector path, then declaration order. Unmatched canonical module paths become anonymous modules with empty `imports`, empty `typeImports`, empty `exports`, `shared: false`, and default `entrypoints: ['index.ts']`.
 
 All architecture rules take no options. Policy comes entirely from this shared settings block.
 
@@ -112,6 +115,7 @@ Customs control for your modules: you declare which modules are allowed to impor
 Deny-by-default for cross-module imports, so forgetting to declare a dependency is a loud error rather than a silent free-for-all. It also enforces:
 
 - cross-module imports must arrive through the public gate (configured entrypoints)
+- type-only imports can be separately allowed via `typeImports` (value imports from those modules remain forbidden)
 - local cross-module namespace imports are forbidden (`import * as X from '<local-module>'`)
 - same-module relative imports can only go one level deeper - no tunnelling into internals
 - files that don't match any declared module become anonymous modules and are denied by default
