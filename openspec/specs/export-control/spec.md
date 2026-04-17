@@ -6,7 +6,7 @@
 
 #### Scenario: Entrypoint uses export-all
 
-- **WHEN** `index.ts` or `types.ts` contains `export * from ...`
+- **WHEN** an entrypoint file contains `export * from ...`
 - **THEN** report an error
 
 #### Scenario: Non-entrypoint file uses export-all
@@ -16,7 +16,7 @@
 
 #### Scenario: Constrained entrypoint uses export-all
 
-- **WHEN** `index.ts` or `types.ts` in a constrained module contains `export * from ...`
+- **WHEN** an entrypoint file in a constrained module contains `export * from ...`
 - **THEN** report an error
 
 ### Requirement: Export control SHALL enforce optional symbol contracts on module entrypoints

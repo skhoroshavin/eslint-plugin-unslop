@@ -5,8 +5,7 @@ import type { Rule } from 'eslint'
 import type { ImportDeclaration } from 'estree'
 
 import {
-  createConfigurationErrorListeners,
-  formatProjectContextError,
+  getArchitectureRuleListenerState,
   getArchitectureRuleState,
   isSamePath,
   matchFileToArchitectureModule,
@@ -31,16 +30,14 @@ export default {
   create(context) {
     if (!isRecognizedTestFile(context.filename)) return {}
 
-    const state = getArchitectureRuleState(context)
-    if (state.kind === 'context-error') {
-      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
-    }
-
-    if (state.kind !== 'active') return {}
+    const result = getArchitectureRuleListenerState(context)
+    if ('listener' in result) return result.listener
+    if (result.state.kind !== 'active') return {}
+    const activeState = result.state
 
     return {
       ImportDeclaration(node) {
-        checkImportDeclaration(context, node, state)
+        checkImportDeclaration(context, node, activeState)
       },
     }
   },
@@ -53,7 +50,7 @@ function checkImportDeclaration(
 ): void {
   const resolvedImport = resolveImport(node, state)
   if (resolvedImport === undefined) return
-  if (resolvedImport.targetModule.instance !== state.moduleMatch.instance) return
+  if (resolvedImport.targetModule.ownerPath !== state.moduleMatch.ownerPath) return
   if (!isSameDirectoryImport(state.filename, resolvedImport.targetFile)) return
   if (isAllowedModuleEntrypoint(resolvedImport.targetFile, state.moduleMatch.policy.entrypoints))
     return
@@ -66,33 +63,22 @@ function checkImportDeclaration(
 }
 
 function resolveImport(node: ImportDeclaration, state: RuleState): ResolvedImport | undefined {
-  const specifier = getSpecifier(node)
-  if (specifier === undefined) return undefined
+  const value = node.source.value
+  if (typeof value !== 'string') return undefined
 
-  const resolvedTarget = resolveImportTarget(state.filename, state.policy.projectContext, specifier)
+  const resolvedTarget = resolveImportTarget(state.filename, state.policy.projectContext, value)
   if (resolvedTarget === undefined) return undefined
 
   const targetFile = normalizeResolvedPath(resolvedTarget)
   const targetModule = matchFileToArchitectureModule(targetFile, state.policy)
   if (targetModule === undefined) return undefined
 
-  return { specifier, targetFile, targetModule }
-}
-
-function getSpecifier(node: ImportDeclaration): string | undefined {
-  const value = node.source.value
-  return typeof value === 'string' ? value : undefined
+  return { specifier: value, targetFile, targetModule }
 }
 
 function isRecognizedTestFile(filename: string): boolean {
   if (filename.length === 0) return false
-  const basename = node_path.basename(filename)
-  return (
-    /^.+\.test\..+$/.test(basename) ||
-    /^.+\.spec\..+$/.test(basename) ||
-    /^.+\.[^.]+-test\..+$/.test(basename) ||
-    /^.+\.[^.]+-spec\..+$/.test(basename)
-  )
+  return /\.(test|spec|[a-z]+-test|[a-z]+-spec)\.[^.]+$/.test(node_path.basename(filename))
 }
 
 function isSameDirectoryImport(importerFile: string, targetFile: string): boolean {

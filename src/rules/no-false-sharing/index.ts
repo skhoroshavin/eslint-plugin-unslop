@@ -7,12 +7,12 @@ import type { ExportNamedDeclaration, Program } from 'estree'
 import ts from 'typescript'
 
 import {
+  createConfigurationErrorListeners,
   formatProjectContextError,
   getArchitectureRuleState,
   getDeclarationNamesFromExport,
   getRelativePath,
   isInsidePath,
-  isPublicEntrypoint,
   isSamePath,
   matchFileToArchitectureModule,
   normalizeResolvedPath,
@@ -36,6 +36,9 @@ export default {
   create(context) {
     const state = buildRuleState(context)
     if (state === undefined) return {}
+    if (state.kind === 'config-error') {
+      return createConfigurationErrorListeners(context, state.details)
+    }
     if (state.kind === 'context-error') {
       return {
         Program(node) {
@@ -57,9 +60,10 @@ export default {
 } satisfies Rule.RuleModule
 
 function buildRuleState(context: Rule.RuleContext): RuleState | undefined {
-  if (!isPublicEntrypoint(context.filename)) return undefined
-
   const state = getArchitectureRuleState(context)
+  if (state.kind === 'config-error') {
+    return { kind: 'config-error', details: state.details }
+  }
   if (state.kind === 'context-error') {
     return {
       kind: 'context-error',
@@ -68,6 +72,8 @@ function buildRuleState(context: Rule.RuleContext): RuleState | undefined {
   }
 
   if (state.kind !== 'active') return undefined
+  if (!isConfiguredEntrypoint(context.filename, state.moduleMatch.policy.entrypoints))
+    return undefined
   if (!state.moduleMatch.policy.shared) return undefined
 
   const sourceRoot = state.policy.projectContext.sourceRoot
@@ -78,11 +84,16 @@ function buildRuleState(context: Rule.RuleContext): RuleState | undefined {
     entrypointFile: state.filename,
     sourceDir: node_path.join(state.policy.projectContext.projectRoot, sourceRoot),
     policy: state.policy,
-    sharedModuleInstance: state.moduleMatch.instance,
+    sharedModuleInstance: state.moduleMatch.ownerPath,
   }
 }
 
-type RuleState = SymbolAnalysisOptions | ContextErrorState
+type RuleState = SymbolAnalysisOptions | ConfigErrorState | ContextErrorState
+
+interface ConfigErrorState {
+  kind: 'config-error'
+  details: string
+}
 
 interface ContextErrorState {
   kind: 'context-error'
@@ -221,7 +232,7 @@ function collectConsumerGroupsFromFile(
   if (!isProjectSourceFile(filePath, options)) return
 
   const moduleMatch = matchFileToArchitectureModule(filePath, options.policy)
-  const isInternalConsumer = moduleMatch?.instance === options.sharedModuleInstance
+  const isInternalConsumer = moduleMatch?.ownerPath === options.sharedModuleInstance
   const usages = collectImportedSymbolUsages(sourceFile, options.policy.projectContext)
 
   for (const usage of usages) {
@@ -420,6 +431,10 @@ function getConsumerGroup(importerPath: string, sourceDir: string): string {
 
 function getInternalConsumerGroup(sharedModuleInstance: string): string {
   return `internal:${sharedModuleInstance}`
+}
+
+function isConfiguredEntrypoint(filePath: string, entrypoints: string[]): boolean {
+  return entrypoints.includes(node_path.basename(filePath))
 }
 
 function getSingleConsumerGroup(groups: Set<string>): string {

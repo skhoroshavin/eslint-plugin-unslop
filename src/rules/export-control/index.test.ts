@@ -36,7 +36,7 @@ scenario('shared types entrypoint uses export-all', rule, {
     { path: 'src/shared/ui/internal.ts' },
   ],
   architecture: {
-    'shared/ui': { shared: true },
+    'shared/ui': { shared: true, entrypoints: ['types.ts'] },
   },
   filename: 'src/shared/ui/types.ts',
   errors: [{ messageId: 'exportAllForbidden' }],
@@ -86,7 +86,11 @@ scenario(
       { path: 'src/repository/user/types.ts', content: 'export default function create() {}' },
     ],
     architecture: {
-      'repository/*': { imports: ['models/*'], exports: ['^create\\w+Repo$'] },
+      'repository/*': {
+        imports: ['models/*'],
+        exports: ['^create\\w+Repo$'],
+        entrypoints: ['types.ts'],
+      },
       'models/*': { imports: ['utils'] },
     },
     filename: 'src/repository/user/types.ts',
@@ -108,9 +112,26 @@ scenario('export-all in constrained entrypoint is reported', rule, {
   errors: [{ messageId: 'exportAllForbidden' }],
 })
 
-scenario('missing architecture settings fails gracefully without reporting', rule, {
+scenario('unsupported architecture key selector reports a configuration error', rule, {
   files: [TSCONFIG, { path: 'src/repository/user/index.ts', content: 'export const helper = 1' }],
+  architecture: {
+    'repository/+': { imports: [], exports: ['^create\\w+Repo$'] },
+  },
   filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'configurationError' }],
+})
+
+scenario('invalid tsconfig reports a configuration error when architecture is configured', rule, {
+  files: [
+    TSCONFIG,
+    { path: 'src/repository/tsconfig.json', content: '{' },
+    { path: 'src/repository/user/index.ts', content: 'export const helper = 1' },
+  ],
+  architecture: {
+    'repository/*': { imports: [], exports: ['^create\\w+Repo$'] },
+  },
+  filename: 'src/repository/user/index.ts',
+  errors: [{ messageId: 'configurationError' }],
 })
 
 scenario('non-entrypoint file with export-all is rejected', rule, {

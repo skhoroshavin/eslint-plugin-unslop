@@ -2,10 +2,13 @@ import type { Rule } from 'eslint'
 
 import type { ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration } from 'estree'
 
+import node_path from 'node:path'
+
 import {
+  createConfigurationErrorListeners,
+  formatProjectContextError,
   getArchitectureRuleState,
   getDeclarationNamesFromExport,
-  isPublicEntrypoint,
 } from '../../utils/index.js'
 
 export default {
@@ -17,6 +20,7 @@ export default {
     },
     schema: [],
     messages: {
+      configurationError: 'Configuration error: {{details}}',
       exportAllForbidden: 'Export denied: export * is not allowed.',
       symbolDenied:
         'Export denied: symbol "{{symbol}}" does not match configured exports patterns.',
@@ -25,6 +29,12 @@ export default {
   },
   create(context) {
     const state = buildRuleState(context)
+    if (state.kind === 'config-error') {
+      return createConfigurationErrorListeners(context, state.details)
+    }
+    if (state.kind === 'context-error') {
+      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
+    }
     if (state.kind === 'invalid') {
       const root = context.getSourceCode().ast
       context.report({
@@ -60,8 +70,15 @@ export default {
 
 function buildRuleState(context: Rule.RuleContext): RuleState {
   const state = getArchitectureRuleState(context)
+  if (state.kind === 'config-error') {
+    return { kind: 'config-error', details: state.details }
+  }
+  if (state.kind === 'context-error') {
+    return { kind: 'context-error', error: state.error }
+  }
   if (state.kind !== 'active') return { kind: 'inactive' }
-  if (!isPublicEntrypoint(state.filename)) return { kind: 'inactive' }
+  if (!isEntrypointFile(state.filename, state.moduleMatch.policy.entrypoints))
+    return { kind: 'inactive' }
   if (state.moduleMatch.policy.exports.length === 0) return { kind: 'inactive' }
 
   const built = buildPatterns(state.moduleMatch.policy.exports)
@@ -113,8 +130,7 @@ function reportDeclarationExportNames(
   if (declaration === null) return
   const names = getDeclarationNamesFromExport(declaration)
   for (const name of names) {
-    if (matchesAnyPattern(name, patterns)) continue
-    context.report({ node, messageId: 'symbolDenied', data: { symbol: name } })
+    reportSymbolIfDenied(context, node, name, patterns)
   }
 }
 
@@ -123,8 +139,17 @@ function checkDefaultExport(
   node: ExportDefaultDeclaration,
   patterns: RegExp[],
 ): void {
-  if (matchesAnyPattern('default', patterns)) return
-  context.report({ node, messageId: 'symbolDenied', data: { symbol: 'default' } })
+  reportSymbolIfDenied(context, node, 'default', patterns)
+}
+
+function reportSymbolIfDenied(
+  context: Rule.RuleContext,
+  node: ExportNamedDeclaration | ExportDefaultDeclaration,
+  symbol: string,
+  patterns: RegExp[],
+): void {
+  if (matchesAnyPattern(symbol, patterns)) return
+  context.report({ node, messageId: 'symbolDenied', data: { symbol } })
 }
 
 function checkExportAll(context: Rule.RuleContext, node: ExportAllDeclaration): void {
@@ -135,7 +160,19 @@ function matchesAnyPattern(symbol: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(symbol))
 }
 
+function isEntrypointFile(filePath: string, entrypoints: string[]): boolean {
+  return entrypoints.includes(node_path.basename(filePath))
+}
+
 type RuleState =
   | { kind: 'inactive' }
+  | { kind: 'config-error'; details: string }
+  | {
+      kind: 'context-error'
+      error: Extract<
+        ReturnType<typeof getArchitectureRuleState>,
+        { kind: 'context-error' }
+      >['error']
+    }
   | { kind: 'invalid'; invalidPattern: string }
   | { kind: 'active'; patterns: RegExp[] }

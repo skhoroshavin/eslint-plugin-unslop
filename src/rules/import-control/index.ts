@@ -5,8 +5,7 @@ import type { ExportAllDeclaration, ExportNamedDeclaration, ImportDeclaration } 
 import node_path from 'node:path'
 
 import {
-  createConfigurationErrorListeners,
-  formatProjectContextError,
+  getArchitectureRuleListenerState,
   getArchitectureRuleState,
   getRelativePath,
   isInsidePath,
@@ -35,22 +34,20 @@ export default {
     },
   },
   create(context) {
-    const state = getArchitectureRuleState(context)
-    if (state.kind === 'context-error') {
-      return createConfigurationErrorListeners(context, formatProjectContextError(state.error))
-    }
-
-    if (state.kind !== 'active') return {}
+    const result = getArchitectureRuleListenerState(context)
+    if ('listener' in result) return result.listener
+    if (result.state.kind !== 'active') return {}
+    const activeState = result.state
 
     return {
       ImportDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
       ExportNamedDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
       ExportAllDeclaration(node) {
-        checkDeclaration(context, node, state)
+        checkDeclaration(context, node, activeState)
       },
     }
   },
@@ -61,37 +58,25 @@ function checkDeclaration(
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
   state: RuleState,
 ): void {
-  const edge = resolveDeclarationEdge(node, state)
-  if (edge === undefined) return
-
-  checkModuleEdge({
-    context,
-    ...edge,
-  })
-}
-
-function resolveDeclarationEdge(
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration,
-  state: RuleState,
-): DeclarationEdge | undefined {
   const specifier = getSpecifier(node)
-  if (specifier === undefined) return undefined
+  if (specifier === undefined) return
 
   const resolvedTarget = resolveImportTarget(state.filename, state.policy.projectContext, specifier)
-  if (resolvedTarget === undefined) return undefined
+  if (resolvedTarget === undefined) return
 
   const targetFile = normalizeResolvedPath(resolvedTarget)
   const importee = matchFileToArchitectureModule(targetFile, state.policy)
-  if (importee === undefined) return undefined
+  if (importee === undefined) return
 
-  return {
+  checkModuleEdge({
+    context,
     node,
     specifier,
     importerFile: state.filename,
     importer: state.moduleMatch,
     importee,
     targetFile,
-  }
+  })
 }
 
 function getSpecifier(
@@ -104,7 +89,7 @@ function getSpecifier(
 
 function checkModuleEdge(options: EdgeCheckOptions): void {
   const { context, node, specifier, importer, importee, targetFile, importerFile } = options
-  if (importer.instance === importee.instance) {
+  if (importer.ownerPath === importee.ownerPath) {
     reportDeepSameModuleImport(context, node, importerFile, targetFile)
     return
   }
@@ -116,11 +101,11 @@ function checkModuleEdge(options: EdgeCheckOptions): void {
 
   if (isShallowRelativeEntrypoint(specifier, targetFile, importee.policy)) return
 
-  if (!allowsImport(importer.policy, importee.matcher)) {
+  if (!allowsImport(importer.policy, importee.canonicalPath)) {
     context.report({
       node,
       messageId: 'notAllowed',
-      data: { from: importer.matcher, to: importee.matcher },
+      data: { from: importer.canonicalPath, to: importee.canonicalPath },
     })
     return
   }
@@ -146,7 +131,7 @@ function isShallowRelativeEntrypoint(
   policy: { entrypoints: string[] },
 ): boolean {
   return (
-    !isRelativeTooDeep(specifier) &&
+    !isRelativeDepthTooDeep(specifier) &&
     specifier.startsWith('./') &&
     isAllowedModuleEntrypoint(targetFile, policy)
   )
@@ -158,15 +143,6 @@ function isAllowedModuleEntrypoint(targetFile: string, policy: { entrypoints: st
 
 interface EdgeCheckOptions {
   context: Rule.RuleContext
-  node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
-  specifier: string
-  importerFile: string
-  importer: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
-  importee: NonNullable<ReturnType<typeof matchFileToArchitectureModule>>
-  targetFile: string
-}
-
-interface DeclarationEdge {
   node: ImportDeclaration | ExportNamedDeclaration | ExportAllDeclaration
   specifier: string
   importerFile: string
@@ -192,22 +168,20 @@ function isSameModuleImportTooDeep(importerFile: string, targetFile: string): bo
   const importerDir = node_path.dirname(importerFile)
   if (!isInsidePath(importerDir, targetFile)) return false
   const relativeTarget = getRelativePath(importerDir, targetFile)
-  return isForwardTraversalTooDeep(relativeTarget)
+  return isRelativePathTooDeep(relativeTarget)
 }
 
-function isForwardTraversalTooDeep(relativeTarget: string): boolean {
-  const segments = relativeTarget.split('/').filter(Boolean)
+function isRelativePathTooDeep(relativePath: string): boolean {
+  const segments = relativePath.split('/').filter(Boolean)
   if (segments.length === 0) return false
   if (segments[0] === '..') return false
-  const depth = Math.max(segments.length - 1, 0)
-  return depth > 1
+  return segments.length > 2
 }
 
-function isRelativeTooDeep(specifier: string): boolean {
+function isRelativeDepthTooDeep(specifier: string): boolean {
   if (!specifier.startsWith('./')) return false
   const parts = specifier.slice(2).split('/').filter(Boolean)
-  const depth = Math.max(parts.length - 1, 0)
-  return depth > 1
+  return parts.length > 2
 }
 
 function allowsImport(policy: { imports: string[] }, targetMatcher: string): boolean {
@@ -216,8 +190,35 @@ function allowsImport(policy: { imports: string[] }, targetMatcher: string): boo
 }
 
 function importPatternMatches(pattern: string, target: string): boolean {
-  const patternSegs = pattern.split('/').filter(Boolean)
-  const targetSegs = target.split('/').filter(Boolean)
-  if (patternSegs.length !== targetSegs.length) return false
-  return patternSegs.every((seg, i) => seg === '*' || seg === targetSegs[i])
+  if (pattern === target) return true
+
+  const plusBase = getTerminalWildcardBase(pattern, '+')
+  if (plusBase !== undefined) {
+    return isExactOrDirectChild(plusBase, target)
+  }
+
+  const starBase = getTerminalWildcardBase(pattern, '*')
+  if (starBase !== undefined) {
+    return isDirectChildModule(starBase, target)
+  }
+
+  return false
+}
+
+function getTerminalWildcardBase(pattern: string, wildcard: '*' | '+'): string | undefined {
+  const suffix = `/${wildcard}`
+  if (!pattern.endsWith(suffix)) return undefined
+  const base = pattern.slice(0, -suffix.length)
+  return base.length > 0 ? base : undefined
+}
+
+function isExactOrDirectChild(base: string, target: string): boolean {
+  return target === base || isDirectChildModule(base, target)
+}
+
+function isDirectChildModule(base: string, target: string): boolean {
+  const prefix = `${base}/`
+  if (!target.startsWith(prefix)) return false
+  const remainder = target.slice(prefix.length)
+  return remainder.length > 0 && !remainder.includes('/')
 }

@@ -2,26 +2,26 @@
 
 ### Requirement: no-false-sharing SHALL take no rule-level options
 
-Empty options schema (`schema: []`). All configuration comes from `settings.unslop.architecture`.
+Empty options schema (`schema: []`). All module ownership and policy configuration SHALL come from `settings.unslop.architecture` via the shared `architecture-config` capability.
 
 #### Scenario: Rule configured without options
 
 - **WHEN** enabled as `'error'` with no options
-- **THEN** reads shared module configuration from settings
+- **THEN** reads shared module configuration from the shared architecture config
 
 #### Scenario: Module marked shared is subject to false-sharing enforcement
 
-- **WHEN** a module policy includes `shared: true`
+- **WHEN** the effective module policy from the shared architecture config includes `shared: true`
 - **THEN** enforce sharing on symbols exported from that module's entrypoints
 
 #### Scenario: Module not marked shared is exempt from false-sharing enforcement
 
-- **WHEN** a module policy does not include `shared: true`
+- **WHEN** the effective module policy from the shared architecture config does not include `shared: true`
 - **THEN** no reports for files within that module
 
 ### Requirement: no-false-sharing SHALL evaluate shared entrypoint exports at symbol granularity
 
-Evaluate whether symbols exported from shared module entrypoints (`index.ts` and `types.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count. When semantic context cannot be established for an analyzed file, the rule MUST report a configuration error.
+Evaluate whether symbols exported from shared module entrypoints (configured `entrypoints`, defaulting to `index.ts`) are consumed by at least two distinct consumer groups. Uses TypeScript semantic project. Symbol comparisons resolve aliases and re-exports to canonical identity. Both public entrypoint imports and same-shared-module internal usage count. Boundary-violating imports of internal files from outside do NOT count. When semantic context cannot be established for an analyzed file, the rule MUST report a configuration error.
 
 #### Scenario: Exported symbol has two distinct consumers
 
