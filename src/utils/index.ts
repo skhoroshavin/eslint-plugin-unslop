@@ -17,3 +17,5 @@ export type { ProjectContext } from './ts-program.js'
 
 export { createConfigurationErrorListeners } from './configuration-error.js'
 export { getDeclarationNamesFromExport } from './export-symbols.js'
+
+export { countProjectWideUses, findTsSourceFile } from './project-symbol-usage.js'

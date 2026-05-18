@@ -81,6 +81,10 @@ scenario('generic factory call initializer is ignored', rule, {
     'void validate',
 })
 
+scenario('plain call expression initializer is ignored (Zod, schema factories)', rule, {
+  code: 'const schema = createSchema({ name: "string" })\nvoid schema',
+})
+
 // --- re-export and export-default do not count as uses ---
 
 scenario('re-export does not count as a use', rule, {
