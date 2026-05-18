@@ -2,7 +2,10 @@ export function kahnsTopologicalSort<T extends KahnsItem>(
   items: T[],
   priority?: (item: T) => number,
 ): T[] {
-  const byName = new Map(items.filter((e) => e.name).map((e) => [e.name!, e]))
+  const byName = new Map<string, T>()
+  for (const e of items) {
+    if (e.name) byName.set(e.name, e)
+  }
   const { inDeg, eagerDependents } = buildInDegrees(items, byName)
   const queue = items.filter((e) => !e.name || inDeg.get(e.name) === 0)
   const result: T[] = []
@@ -13,7 +16,10 @@ export function kahnsTopologicalSort<T extends KahnsItem>(
 }
 
 export function findCyclicNames<T extends KahnsItem>(items: T[]): Set<string> {
-  const byName = new Map(items.filter((e) => e.name).map((e) => [e.name!, e]))
+  const byName = new Map<string, T>()
+  for (const e of items) {
+    if (e.name) byName.set(e.name, e)
+  }
   const inCycle = new Set<string>()
   for (const [name] of byName) {
     if (reachesSelf(name, name, byName, new Set())) {
@@ -21,18 +27,6 @@ export function findCyclicNames<T extends KahnsItem>(items: T[]): Set<string> {
     }
   }
   return inCycle
-}
-
-interface KahnsItem {
-  name: string | null
-  deps: Set<string>
-  idx: number
-  /** True when the declaration's initializer is evaluated eagerly at module-init time
-   *  (e.g. const x = expr(), export default expr()). Eager consumers must have their
-   *  dependencies placed *before* them in the sort to avoid TDZ ReferenceErrors.
-   *  Non-eager items (functions, types) follow the standard read-friendly order
-   *  where consumers are placed before helpers. */
-  eager?: boolean
 }
 
 function buildInDegrees<T extends KahnsItem>(
@@ -46,20 +40,36 @@ function buildInDegrees<T extends KahnsItem>(
     eagerDependents.set(name, [])
   }
   for (const item of items) {
-    for (const d of item.deps) {
-      if (!inDeg.has(d)) continue
-      if (item.eager && item.name && inDeg.has(item.name)) {
-        // Eager consumer: dependency must be placed BEFORE consumer to avoid TDZ.
-        // Block the consumer until its dependency is placed.
-        inDeg.set(item.name, inDeg.get(item.name)! + 1)
-        eagerDependents.get(d)!.push(item.name)
-      } else {
-        // Non-eager (function, type, etc.): consumer before helper (read-friendly order).
-        inDeg.set(d, inDeg.get(d)! + 1)
-      }
-    }
+    processItemDeps(item, inDeg, eagerDependents)
   }
   return { inDeg, eagerDependents }
+}
+
+function processItemDeps(
+  item: KahnsItem,
+  inDeg: Map<string, number>,
+  eagerDependents: Map<string, string[]>,
+): void {
+  for (const d of item.deps) {
+    if (!inDeg.has(d)) continue
+    if (item.eager && item.name && inDeg.has(item.name)) {
+      addEagerDependent(item.name, d, inDeg, eagerDependents)
+    } else {
+      inDeg.set(d, (inDeg.get(d) ?? 0) + 1)
+    }
+  }
+}
+
+function addEagerDependent(
+  consumerName: string,
+  dep: string,
+  inDeg: Map<string, number>,
+  eagerDependents: Map<string, string[]>,
+): void {
+  inDeg.set(consumerName, (inDeg.get(consumerName) ?? 0) + 1)
+  const list = eagerDependents.get(dep) ?? []
+  list.push(consumerName)
+  eagerDependents.set(dep, list)
 }
 
 function drainQueue<T extends KahnsItem>(
@@ -70,7 +80,8 @@ function drainQueue<T extends KahnsItem>(
 ): void {
   while (queue.length > 0) {
     queue.sort((a, b) => (priority ? priority(a) - priority(b) : 0) || a.idx - b.idx)
-    const item = queue.shift()!
+    const item = queue.shift()
+    if (item === undefined) break
     result.push(item)
     if (item.name) state.placed.add(item.name)
     decrementDeps(item, queue, state)
@@ -85,8 +96,9 @@ function decrementDeps<T extends KahnsItem>(item: T, queue: T[], state: KahnsSta
 function decrementNonEager<T extends KahnsItem>(item: T, queue: T[], state: KahnsState<T>): void {
   for (const d of item.deps) {
     if (state.placed.has(d) || !state.inDeg.has(d)) continue
-    state.inDeg.set(d, state.inDeg.get(d)! - 1)
-    if (state.inDeg.get(d) === 0) enqueueByName(d, queue, state)
+    const current = state.inDeg.get(d) ?? 0
+    state.inDeg.set(d, current - 1)
+    if (current - 1 === 0) enqueueByName(d, queue, state)
   }
 }
 
@@ -94,8 +106,9 @@ function decrementEager<T extends KahnsItem>(item: T, queue: T[], state: KahnsSt
   if (!item.name) return
   for (const consumerName of state.eagerDependents.get(item.name) ?? []) {
     if (state.placed.has(consumerName) || !state.inDeg.has(consumerName)) continue
-    state.inDeg.set(consumerName, state.inDeg.get(consumerName)! - 1)
-    if (state.inDeg.get(consumerName) === 0) enqueueByName(consumerName, queue, state)
+    const current = state.inDeg.get(consumerName) ?? 0
+    state.inDeg.set(consumerName, current - 1)
+    if (current - 1 === 0) enqueueByName(consumerName, queue, state)
   }
 }
 
@@ -133,4 +146,16 @@ function reachesSelf<T extends KahnsItem>(
     if (reachesSelf(target, dep, byName, visited)) return true
   }
   return false
+}
+
+interface KahnsItem {
+  name: string | null
+  deps: Set<string>
+  idx: number
+  /** True when the declaration's initializer is evaluated eagerly at module-init time
+   *  (e.g. const x = expr(), export default expr()). Eager consumers must have their
+   *  dependencies placed *before* them in the sort to avoid TDZ ReferenceErrors.
+   *  Non-eager items (functions, types) follow the standard read-friendly order
+   *  where consumers are placed before helpers. */
+  eager?: boolean
 }

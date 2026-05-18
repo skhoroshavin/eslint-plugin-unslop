@@ -58,7 +58,7 @@ scenario('exported type used as type argument in another file is not reported', 
   filename: 'src/types.ts',
 })
 
-scenario('exported type used in typeof query in another file is not reported', rule, {
+scenario('exported type used in type annotation in another file is not reported', rule, {
   typescript: true,
   files: [
     TSCONFIG,
