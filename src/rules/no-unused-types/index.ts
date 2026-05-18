@@ -68,13 +68,11 @@ function getExportedTypeName(stmt: Program['body'][number]): string | undefined 
   if (stmt.type !== 'ExportNamedDeclaration') return undefined
   const decl = stmt.declaration
   if (decl === null || decl === undefined) return undefined
-  // eslint-disable-next-line no-restricted-syntax -- TS-specific AST node types extend ESTree
-  const declType = (decl as { type: string }).type
+  const declType = strProp(decl, 'type')
   if (declType !== 'TSTypeAliasDeclaration' && declType !== 'TSInterfaceDeclaration')
     return undefined
-  // eslint-disable-next-line no-restricted-syntax
-  const id = (decl as { id?: { name: string } | null }).id
-  return id !== null && id !== undefined ? id.name : undefined
+  const idNode = prop(decl, 'id')
+  return strProp(idNode, 'name')
 }
 
 function checkType(
@@ -134,4 +132,19 @@ function getTypedDeclaration(
     return stmt
   }
   return undefined
+}
+
+/** Read a string property by key, or undefined if missing or non-string. */
+function strProp(obj: unknown, key: string): string | undefined {
+  const v = prop(obj, key)
+  return typeof v === 'string' ? v : undefined
+}
+
+/**
+ * Read a property by key without type assertions, returning unknown.
+ * @see src/rules/read-friendly-order/ast-utils.ts — same pattern.
+ */
+function prop(obj: unknown, key: string): unknown {
+  if (typeof obj !== 'object' || obj === null) return undefined
+  return Reflect.get(obj, key)
 }
