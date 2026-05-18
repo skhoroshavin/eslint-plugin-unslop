@@ -478,5 +478,53 @@ scenario(
   },
 )
 
+// ─── Eager value-dependency ordering (Zod, runtime init safety) ──────────────
+
+scenario('eager value consumer is placed after the value it depends on in autofix', rule, {
+  typescript: true,
+  code: [
+    'export const top = middle',
+    '',
+    'export const middle = 1',
+    '',
+    'export type T = typeof top',
+  ].join('\n'),
+  errors: [{ messageId: 'moveHelperBelow' }],
+  // top depends on middle eagerly → middle must stay above top to avoid TDZ.
+  // T depends on top (type-level) → top can be below T.
+  output: [
+    'export type T = typeof top',
+    '',
+    'export const middle = 1',
+    '',
+    'export const top = middle',
+  ].join('\n'),
+})
+
+scenario('eager consumers are ordered so downstream eager deps stay above their consumers', rule, {
+  typescript: true,
+  code: [
+    'export const top = middle',
+    '',
+    'export const middle = leaf',
+    '',
+    'export const leaf = 1',
+    '',
+    'export type T = typeof top',
+  ].join('\n'),
+  // Only top is flagged: leaf and middle are eagerly depended-upon so they stay
+  // where they are. The autofix sorts only the movable items.
+  errors: [{ messageId: 'moveHelperBelow' }],
+  output: [
+    'export type T = typeof top',
+    '',
+    'export const leaf = 1',
+    '',
+    'export const middle = leaf',
+    '',
+    'export const top = middle',
+  ].join('\n'),
+})
+
 // Class member ordering, test phase ordering, and idempotency scenarios
 // are in class-and-phases.test.ts (split to stay within file line limits).

@@ -7,10 +7,11 @@ import ts from 'typescript'
 import {
   formatProjectContextError,
   getRequiredTypeScriptProjectContext,
-  normalizeResolvedPath,
 } from '../../utils/index.js'
 
 import type { ProjectContext } from '../../utils/index.js'
+
+import { countProjectWideUses, findTsSourceFile } from '../../utils/index.js'
 
 export default {
   meta: {
@@ -128,19 +129,8 @@ function isExcludedInitializer(declarator: VariableDeclarator): boolean {
     init.type === 'ArrowFunctionExpression' ||
     init.type === 'FunctionExpression' ||
     init.type === 'ClassExpression' ||
-    hasExplicitTypeArguments(init)
+    init.type === 'CallExpression'
   )
-}
-
-function hasExplicitTypeArguments(node: MaybeTypedCallExpression): boolean {
-  if (node.type !== 'CallExpression') return false
-  return node.typeArguments !== undefined || node.typeParameters !== undefined
-}
-
-interface MaybeTypedCallExpression {
-  type: string
-  typeArguments?: unknown
-  typeParameters?: unknown
 }
 
 function collectExportedNames(program: Program, names: Set<string>): void {
@@ -197,11 +187,6 @@ function countExportedUses(
   return countProjectWideUses(targetSymbol, tsContext.checker, tsContext.program)
 }
 
-function findTsSourceFile(program: ts.Program, filename: string): ts.SourceFile | undefined {
-  const normalized = normalizeResolvedPath(filename)
-  return program.getSourceFiles().find((sf) => normalizeResolvedPath(sf.fileName) === normalized)
-}
-
 function findDeclarationSymbol(
   sourceFile: ts.SourceFile,
   name: string,
@@ -216,70 +201,4 @@ function findDeclarationSymbol(
     }
   }
   return undefined
-}
-
-function countProjectWideUses(
-  targetSymbol: ts.Symbol,
-  checker: ts.TypeChecker,
-  program: ts.Program,
-): number {
-  let total = 0
-  for (const sf of program.getSourceFiles()) {
-    if (sf.isDeclarationFile) continue
-    total += countUsesInFile(sf, targetSymbol, checker)
-  }
-  return total
-}
-
-function countUsesInFile(
-  sourceFile: ts.SourceFile,
-  targetSymbol: ts.Symbol,
-  checker: ts.TypeChecker,
-): number {
-  let count = 0
-
-  function walk(node: ts.Node): void {
-    if (ts.isIdentifier(node) && isCountableUse(node, targetSymbol, checker)) {
-      count++
-    }
-    ts.forEachChild(node, walk)
-  }
-
-  walk(sourceFile)
-  return count
-}
-
-function isCountableUse(
-  node: ts.Identifier,
-  targetSymbol: ts.Symbol,
-  checker: ts.TypeChecker,
-): boolean {
-  if (!isRealUsagePosition(node)) return false
-  const sym = checker.getSymbolAtLocation(node)
-  if (sym === undefined) return false
-  return resolveCanonicalSymbol(sym, checker) === targetSymbol
-}
-
-function isRealUsagePosition(node: ts.Identifier): boolean {
-  const parent = node.parent
-  if (isDeclarationBinding(parent, node)) return false
-  if (isImportPosition(parent, node)) return false
-  if (ts.isExportSpecifier(parent)) return false
-  if (ts.isExportAssignment(parent)) return false
-  return true
-}
-
-function isDeclarationBinding(parent: ts.Node, node: ts.Identifier): boolean {
-  return ts.isVariableDeclaration(parent) && parent.name === node
-}
-
-function isImportPosition(parent: ts.Node, node: ts.Identifier): boolean {
-  if (ts.isImportSpecifier(parent)) return true
-  if (ts.isImportClause(parent) && parent.name === node) return true
-  return ts.isNamespaceImport(parent) && parent.name === node
-}
-
-function resolveCanonicalSymbol(symbol: ts.Symbol, checker: ts.TypeChecker): ts.Symbol {
-  if ((symbol.flags & ts.SymbolFlags.Alias) === 0) return symbol
-  return checker.getAliasedSymbol(symbol)
 }

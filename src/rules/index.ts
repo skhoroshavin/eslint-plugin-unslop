@@ -7,6 +7,7 @@ import importControl from './import-control/index.js'
 import noWhiteboxTesting from './no-whitebox-testing/index.js'
 import exportControl from './export-control/index.js'
 import noSingleUseConstants from './no-single-use-constants/index.js'
+import noUnusedTypes from './no-unused-types/index.js'
 
 export default {
   'no-special-unicode': noSpecialUnicode,
@@ -17,4 +18,5 @@ export default {
   'no-whitebox-testing': noWhiteboxTesting,
   'export-control': exportControl,
   'no-single-use-constants': noSingleUseConstants,
+  'no-unused-types': noUnusedTypes,
 } satisfies Record<string, Rule.RuleModule>

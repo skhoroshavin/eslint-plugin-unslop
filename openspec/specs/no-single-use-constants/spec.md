@@ -34,7 +34,7 @@ The rule MUST skip destructured ids, arrow/function/class expressions, import/ex
 
 ### Requirement: no-single-use-constants SHALL NOT report constants initialized with structured data or factory expressions
 
-The rule MUST ignore `ObjectExpression` and `NewExpression` initializers. The rule MUST also ignore `CallExpression` with explicit TypeScript type arguments.
+The rule MUST ignore `ObjectExpression`, `NewExpression`, and `CallExpression` initializers.
 
 #### Scenario: Destructured const is ignored
 
@@ -81,9 +81,9 @@ The rule MUST ignore `ObjectExpression` and `NewExpression` initializers. The ru
 - **WHEN** initialized with `new` expression (e.g., `new Set(...)`)
 - **THEN** ignored
 
-#### Scenario: Generic factory call initializer is ignored
+#### Scenario: Factory call initializer is ignored
 
-- **WHEN** initialized with a call expression carrying TypeScript type arguments (e.g., `typia.createValidate<MySchema>()`)
+- **WHEN** initialized with a call expression (e.g., `z.object({...})`, `typia.createValidate<MySchema>()`)
 - **THEN** ignored
 
 ### Requirement: no-single-use-constants SHALL count project-wide semantic uses
