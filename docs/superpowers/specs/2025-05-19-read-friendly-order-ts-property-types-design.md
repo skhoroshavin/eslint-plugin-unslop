@@ -24,6 +24,7 @@ function walkPropertyIds(node: unknown, ids: Set<string>, skip: string | null): 
 ```
 
 This is safe:
+
 - Non-TS code has no `typeAnnotation` → `prop` returns `undefined` → `walkIds` is a no-op.
 - `walkFunctionLike` already handles parameter and return type annotations, so constructor/method signatures are already covered.
 - TS-specific nodes like `implements`, `superTypeParameters`, and `typeParameters` on classes are already walked via `walkChildren` → `walkNodeChildren`.
@@ -47,8 +48,12 @@ Expected: `moveHelperBelow` on `ApplicantPersonal`. Autofix moves class above in
 ### 2. Multiple interfaces above class → all flagged, class first in output
 
 ```ts
-export interface A { x: number }
-export interface B { y: string }
+export interface A {
+  x: number
+}
+export interface B {
+  y: string
+}
 
 export class C {
   a: A

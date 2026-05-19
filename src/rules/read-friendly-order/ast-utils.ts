@@ -219,6 +219,7 @@ function walkMemberIds(node: unknown, ids: Set<string>, skip: string | null): vo
 function walkPropertyIds(node: unknown, ids: Set<string>, skip: string | null): void {
   if (prop(node, 'computed')) walkIds(prop(node, 'key'), ids, skip)
   walkIds(prop(node, 'value'), ids, skip)
+  walkIds(prop(node, 'typeAnnotation'), ids, skip)
 }
 
 function isPropertyLike(t: string): boolean {
