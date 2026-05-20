@@ -184,6 +184,7 @@ function walkIds(node: unknown, ids: Set<string>, skip: string | null): void {
   if (!t) return
   if (t === 'Identifier') {
     addIdentifier(node, ids, skip)
+    walkIds(prop(node, 'typeAnnotation'), ids, skip)
     return
   }
   if (t === 'Literal' || t === 'TemplateLiteral') return

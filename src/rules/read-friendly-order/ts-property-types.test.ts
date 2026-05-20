@@ -114,3 +114,26 @@ scenario(
     ].join('\n'),
   },
 )
+
+scenario('interface above another interface using it in method param is flagged', rule, {
+  typescript: true,
+  code: [
+    'export interface OpenPageOptions {',
+    '  waitFor?: string',
+    '}',
+    '',
+    'export interface Browser {',
+    '  openPage(url: string, options?: OpenPageOptions): Promise<void>',
+    '}',
+  ].join('\n'),
+  errors: [{ messageId: 'moveHelperBelow' }],
+  output: [
+    'export interface Browser {',
+    '  openPage(url: string, options?: OpenPageOptions): Promise<void>',
+    '}',
+    '',
+    'export interface OpenPageOptions {',
+    '  waitFor?: string',
+    '}',
+  ].join('\n'),
+})
