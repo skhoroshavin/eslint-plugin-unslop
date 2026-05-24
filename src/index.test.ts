@@ -1,5 +1,7 @@
 import node_fs from 'node:fs'
+
 import node_os from 'node:os'
+
 import node_path from 'node:path'
 
 import { ESLint } from 'eslint'
@@ -7,12 +9,10 @@ import { ESLint } from 'eslint'
 import type { Linter } from 'eslint'
 
 import { expect, test } from 'vitest'
+
 import unslop from './index.js'
 
 const FULL_CONFIG = unslop.configs?.full
-const FULL_RULES: Linter.Config['rules'] = Array.isArray(FULL_CONFIG)
-  ? undefined
-  : FULL_CONFIG?.rules
 
 test('exports minimal and full configs and no recommended alias', () => {
   expect(unslop.configs).toHaveProperty('minimal')
@@ -67,6 +67,15 @@ test('full config surfaces tsconfig configuration failures for required-context 
   }
 })
 
+const DEFAULT_ARCHITECTURE: Record<string, unknown> = { module: { imports: [], shared: true } }
+
+function createTempConfigFailureProject(): string {
+  const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-full-config-'))
+  node_fs.mkdirSync(node_path.join(dir, 'src/module'), { recursive: true })
+  node_fs.writeFileSync(node_path.join(dir, 'tsconfig.json'), '{')
+  return dir
+}
+
 test('full config surfaces invalid architecture selectors for impacted architecture rules', async () => {
   const dir = createTempValidProject()
   try {
@@ -98,13 +107,6 @@ test('full config surfaces invalid architecture selectors for impacted architect
   }
 })
 
-function createTempConfigFailureProject(): string {
-  const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-full-config-'))
-  node_fs.mkdirSync(node_path.join(dir, 'src/module'), { recursive: true })
-  node_fs.writeFileSync(node_path.join(dir, 'tsconfig.json'), '{')
-  return dir
-}
-
 function createTempValidProject(): string {
   const dir = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'unslop-full-config-'))
   node_fs.mkdirSync(node_path.join(dir, 'src/module'), { recursive: true })
@@ -115,11 +117,13 @@ function createTempValidProject(): string {
   return dir
 }
 
-const DEFAULT_ARCHITECTURE: Record<string, unknown> = { module: { imports: [], shared: true } }
-
 function createFullConfigLinter(dir: string, architecture: Record<string, unknown>): ESLint {
   return new ESLint(makeFullConfigLinterOptions(dir, FULL_RULES, architecture))
 }
+
+const FULL_RULES: Linter.Config['rules'] = Array.isArray(FULL_CONFIG)
+  ? undefined
+  : FULL_CONFIG?.rules
 
 function makeFullConfigLinterOptions(
   dir: string,

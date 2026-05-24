@@ -87,10 +87,32 @@ export function isLocalPublicExport(node: Node): boolean {
 
 export function isEagerInit(node: Node): boolean {
   const t = node.type
-  if (t === 'ExpressionStatement' || t === 'IfStatement') return true
+  if (t === 'IfStatement') return true
+  if (t === 'ExpressionStatement') return !isTestFrameworkCall(node)
   if (t === 'ExportDefaultDeclaration') return isEagerDefaultExport(node)
   return isEagerVarDecl(t === 'ExportNamedDeclaration' ? prop(node, 'declaration') : node)
 }
+
+function isTestFrameworkCall(node: Node): boolean {
+  const expr = prop(node, 'expression')
+  if (!expr || typeof expr !== 'object') return false
+  if (strProp(expr, 'type') !== 'CallExpression') return false
+  const callee = prop(expr, 'callee')
+  if (!callee || typeof callee !== 'object') return false
+  if (strProp(callee, 'type') !== 'Identifier') return false
+  const name = strProp(callee, 'name')
+  return typeof name === 'string' && TEST_FRAMEWORK_CALLS.has(name)
+}
+
+const TEST_FRAMEWORK_CALLS: ReadonlySet<string> = new Set([
+  'describe',
+  'it',
+  'test',
+  'beforeAll',
+  'beforeEach',
+  'afterAll',
+  'afterEach',
+])
 
 function isEagerDefaultExport(node: Node): boolean {
   const declType = strProp(prop(node, 'declaration'), 'type')

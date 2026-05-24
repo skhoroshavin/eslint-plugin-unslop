@@ -1,8 +1,11 @@
 import node_fs from 'node:fs'
+
 import node_os from 'node:os'
+
 import node_path from 'node:path'
 
 import { afterEach, expect, test } from 'vitest'
+
 import ts from 'typescript'
 
 import {
@@ -10,8 +13,6 @@ import {
   getCanonicalModulePath,
   matchFileToArchitectureModule,
 } from '../src/utils/architecture-policy.js'
-
-const tempDirs: string[] = []
 
 afterEach(() => {
   const dirs = tempDirs.splice(0)
@@ -164,17 +165,6 @@ function getActivePolicy(architecture: Record<string, unknown>, context: TestPro
   throw new Error(`Expected active policy, got ${result.kind}`)
 }
 
-function normalizeFile(filePath: string): string {
-  return filePath.replace(/\\/g, '/')
-}
-
-function readParsedTsconfig(configPath: string): ts.ParsedCommandLine | undefined {
-  return ts.getParsedCommandLineOfConfigFile(configPath, undefined, {
-    ...ts.sys,
-    onUnRecoverableConfigFileDiagnostic() {},
-  })
-}
-
 interface TestProject {
   context: {
     projectRoot: string
@@ -187,3 +177,16 @@ interface TestProject {
   }
   file(relativePath: string): string
 }
+
+function normalizeFile(filePath: string): string {
+  return filePath.replace(/\\/g, '/')
+}
+
+function readParsedTsconfig(configPath: string): ts.ParsedCommandLine | undefined {
+  return ts.getParsedCommandLineOfConfigFile(configPath, undefined, {
+    ...ts.sys,
+    onUnRecoverableConfigFileDiagnostic() {},
+  })
+}
+
+const tempDirs: string[] = []
