@@ -306,6 +306,56 @@ scenario('eager entrypoint with constant and helpers defined below is allowed', 
   ].join('\n'),
 })
 
+// ─── Test framework calls are not eager ───────────────────────────────────────
+
+scenario('test helper above describe block that calls it inside it callback is flagged', rule, {
+  code: [
+    'function makeHarness() { return {} }',
+    '',
+    "describe('suite', () => {",
+    "  it('test', () => {",
+    '    const h = makeHarness()',
+    '  })',
+    '})',
+  ].join('\n'),
+  errors: [{ messageId: 'moveHelperBelow' }],
+  output: [
+    "describe('suite', () => {",
+    "  it('test', () => {",
+    '    const h = makeHarness()',
+    '  })',
+    '})',
+    '',
+    'function makeHarness() { return {} }',
+  ].join('\n'),
+})
+
+scenario('describe block does not mark helpers used only in deferred callbacks as eager', rule, {
+  code: [
+    'function setupDb() { return {} }',
+    '',
+    'function runTests() { return setupDb() }',
+    '',
+    "describe('integration', () => {",
+    "  it('works', () => {",
+    '    const result = runTests()',
+    '  })',
+    '})',
+  ].join('\n'),
+  errors: [{ messageId: 'moveHelperBelow' }, { messageId: 'moveHelperBelow' }],
+  output: [
+    "describe('integration', () => {",
+    "  it('works', () => {",
+    '    const result = runTests()',
+    '  })',
+    '})',
+    '',
+    'function runTests() { return setupDb() }',
+    '',
+    'function setupDb() { return {} }',
+  ].join('\n'),
+})
+
 // ─── Cyclic dependencies ──────────────────────────────────────────────────────
 
 scenario('mutually recursive helpers are allowed in any order', rule, {
